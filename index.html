@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#05080b" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>DEATH RACE 3D // Track Engine</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d1116'/%3E%3Cpath d='M8 22 16 9l8 13z' fill='%23ff8a24'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud" class="hud">
+    <div class="hud-bar">
+      <div class="identity">
+        <div class="brand">DEATH<span>RACE</span>3D</div>
+        <div class="circuits" id="trackButtons">
+          <button class="track active" data-index="0" aria-label="Terminal Wasteland"><b>1</b><i>TERMINAL</i></button>
+          <button class="track" data-index="1" aria-label="Volcanic Ridge"><b>2</b><i>VOLCANIC</i></button>
+          <button class="track" data-index="2" aria-label="Dockyard Run"><b>3</b><i>DOCKYARD</i></button>
+        </div>
+      </div>
+
+      <div class="race">
+        <div class="cell">
+          <span>POS</span>
+          <b><em id="position">1</em><u id="fieldSize">/7</u></b>
+        </div>
+        <div class="cell">
+          <span>LAP</span>
+          <b><em id="lap">1</em><u id="lapTotal">/3</u></b>
+        </div>
+        <div class="cell time">
+          <span>LAP TIME</span>
+          <b id="lapTime">00:00.0</b>
+          <i id="bestLap">--:--.-</i>
+        </div>
+        <div class="cell speed">
+          <span>SPEED</span>
+          <b id="speed">0</b>
+          <i>KM/H</i>
+        </div>
+        <div class="gauges">
+          <div class="gauge">
+            <label>ARMOR<i id="armorPct">100%</i></label>
+            <div class="bar"><b id="armorFill"></b></div>
+          </div>
+          <div class="gauge nitro">
+            <label>NITRO<i id="nitroPct">100%</i></label>
+            <div class="bar"><b id="nitroFill"></b></div>
+          </div>
+          <div class="gauge shield">
+            <label>SHIELD<i id="shieldPct">100%</i></label>
+            <div class="bar"><b id="shieldFill"></b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tools">
+        <button id="cameraBtn" class="chip"><span id="camLabel">CHASE</span></button>
+        <button id="settingsBtn" class="chip icon" aria-label="Settings" aria-expanded="false">&#9881;</button>
+        <span id="fps" class="fps">-- FPS</span>
+      </div>
+    </div>
+
+    <div id="settingsPanel" class="settings" hidden>
+      <div class="row"><span>AUTO ACCELERATE</span><button class="switch on" id="toggleAuto" aria-pressed="true"><i></i></button></div>
+      <div class="row"><span>TILT STEERING</span><button class="switch" id="toggleTilt" aria-pressed="false"><i></i></button></div>
+      <div class="row"><span>AI DRIVING ASSIST</span>
+        <div class="seg" role="group" aria-label="AI driving assist">
+          <button data-assist="off" aria-pressed="false">OFF</button>
+          <button data-assist="low" aria-pressed="false">LOW</button>
+          <button data-assist="high" aria-pressed="true">HIGH</button>
+        </div>
+      </div>
+      <p>Touch, tilt or WASD. Shift nitro &middot; Space gun &middot; E rocket.</p>
+    </div>
+  </div>
+
+  <div id="touch" class="touch">
+    <div class="steer">
+      <button id="steerLeft" class="pad left" aria-label="Steer left"></button>
+      <button id="steerRight" class="pad right" aria-label="Steer right"></button>
+    </div>
+
+    <div class="action">
+      <div class="action-grid">
+        <button id="gasBtn" class="btn gas" aria-label="Throttle" hidden><span>GAS</span></button>
+        <button id="nitroBtn" class="btn nitro" aria-label="Nitro boost"><span>NITRO</span></button>
+        <button id="brakeBtn" class="btn brake" aria-label="Brake and drift"><span>BRAKE</span></button>
+        <button id="gunBtn" class="btn gun" aria-label="Primary gun, hold to fire"><span>GUN</span><i class="ammo" id="gunAmmo">120</i></button>
+        <button id="missileBtn" class="btn weapon missile" aria-label="Launch missile"><span>MSL</span><i class="ammo" id="missileAmmo">4</i></button>
+        <button id="oilBtn" class="btn weapon oil" aria-label="Rear oil and smoke, hold to keep laying"><span>OIL</span><i class="ammo" id="oilAmmo">3</i></button>
+        <button id="shieldBtn" class="btn weapon shield" aria-label="Toggle ray shield"><span>SHLD</span><i class="ammo" id="shieldCharge">100</i></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="assistPill" class="assist"><i></i>BRAKE ASSIST</div>
+
+  <div id="results" class="results" hidden>
+    <div class="results-card">
+      <div class="results-head">
+        <span class="kicker">RACE COMPLETE</span>
+        <b id="resultsTitle">P1</b>
+      </div>
+      <p id="resultsSub"></p>
+      <div class="results-stats">
+        <div><span>TOTAL TIME</span><b id="resultTime">--:--.-</b></div>
+        <div><span>BEST LAP</span><b id="resultBest">--:--.-</b></div>
+        <div><span>FINISH</span><b id="resultField">1/7</b></div>
+      </div>
+      <ol id="resultList" class="results-list"></ol>
+      <button id="restartBtn" class="results-btn">RACE AGAIN</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <div id="hint" class="hint">
+    <b>WASD</b> drive &middot; <b>SHIFT</b> nitro &middot; <b>SPACE</b> gun &middot;
+    <b>E</b> missile &middot; <b>Q</b> oil &middot; <b>F</b> shield &middot; <b>R</b> reset &middot;
+    <b>C</b> camera &middot; <b>1&ndash;3</b> circuit
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

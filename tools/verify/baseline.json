@@ -1,0 +1,81 @@
+{
+  "meta": {
+    "note": "Recorded by tools/verify/run.mjs. Re-record with --update after intentional tuning.",
+    "viewport": {
+      "width": 956,
+      "height": 440
+    },
+    "track": 0,
+    "recorded": "2026-11-23"
+  },
+  "assist": {
+    "off": {
+      "brakeS": 0,
+      "peakBrake": 0,
+      "contactS": 3.85,
+      "hits": 6,
+      "minKmh": 78,
+      "hairpinKmh": 97,
+      "maxKmh": 243,
+      "slipDeg": 18
+    },
+    "low": {
+      "brakeS": 14.18,
+      "peakBrake": 0.39,
+      "contactS": 0,
+      "hits": 0,
+      "minKmh": 136,
+      "hairpinKmh": 136,
+      "maxKmh": 243,
+      "slipDeg": 5
+    },
+    "high": {
+      "brakeS": 18.85,
+      "peakBrake": 0.4,
+      "contactS": 0,
+      "hits": 0,
+      "minKmh": 117,
+      "hairpinKmh": 117,
+      "maxKmh": 243,
+      "slipDeg": 5
+    }
+  },
+  "drift": {
+    "preSpeed": 196,
+    "driftSpeed": 15,
+    "peakSlipDeg": 21,
+    "maxPuffs": 24,
+    "afterPuffs": 0,
+    "afterVisible": false
+  },
+  "cameras": {
+    "chase": {
+      "horiz": 4.86,
+      "height": 2.1,
+      "near": 0.5,
+      "far": 12000,
+      "fov": 64
+    },
+    "hood": {
+      "horiz": 2.42,
+      "height": 1.06,
+      "near": 0.5,
+      "far": 9000,
+      "fov": 68
+    },
+    "cockpit": {
+      "horiz": 0.1,
+      "height": 1.3,
+      "near": 0.12,
+      "far": 6000,
+      "fov": 72
+    },
+    "overview": {
+      "horiz": 680.74,
+      "height": 1403.39,
+      "near": 20,
+      "far": 20000,
+      "fov": 54
+    }
+  }
+}
