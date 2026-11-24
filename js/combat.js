@@ -122,7 +122,7 @@ export class Combat {
     this.missileCooldown = 0;
     this.missiles = new Array(MISSILE_COUNT).fill(null).map(() => ({
       live: false, pos: new THREE.Vector3(), dir: new THREE.Vector3(0, 0, 1),
-      target: -1, life: 0,
+      target: -1, life: 0, defended: false,
     }));
     this.missileMesh = new THREE.InstancedMesh(
       MISSILE_GEO,
@@ -351,6 +351,7 @@ export class Combat {
     slot.pos.copy(_muzzle);
     slot.dir.copy(_dir);
     slot.target = this._nearestRival(_muzzle, _dir, 170, 0.9);
+    slot.defended = false;
 
     this.driver.flash = 0.22;
     this.driver.pushMessage(
@@ -417,6 +418,12 @@ export class Combat {
       s.size = size * (0.5 + Math.random() * 0.7);
       s.color.setHex(color);
     }
+  }
+
+  /** Public spark burst for hits that do not come from the player's guns —
+      rival cannon rounds landing on the player or on another rival. */
+  impact(x, y, z, size = 1.4, color = 0xffa040) {
+    this._spawnSparks(x, y, z, size, color);
   }
 
   _spawnPuff(pos, size, color, rise = 0.6) {
@@ -506,6 +513,17 @@ export class Combat {
       if (!m.live) continue;
       m.life -= dt;
       if (m.life <= 0) { m.live = false; continue; }
+
+      // one attempt per warhead: a defensive rival may break the lock before
+      // the seeker settles, and it gets that roll once, not every frame
+      if (m.target >= 0 && !m.defended) {
+        m.defended = true;
+        if (this.opponents.defendMissile(m.target)) {
+          this._spawnSparks(m.pos.x, m.pos.y, m.pos.z, 1.8, 0x8fe8ff);
+          m.live = false;
+          continue;
+        }
+      }
 
       // terminal homing: keep tracking while the target stays ahead
       if (m.target >= 0) {

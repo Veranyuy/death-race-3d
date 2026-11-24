@@ -685,7 +685,7 @@ function showResults() {
 
   const rows = opponents.cars.map((car, i) => ({
     prog: car.s / track.length,
-    label: `RIVAL ${i + 1}`,
+    label: car.label || `RIVAL ${i + 1}`,
     color: RIVAL_COLORS[i % RIVAL_COLORS.length],
     me: false,
   }));

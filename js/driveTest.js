@@ -57,8 +57,24 @@ const GRIP_HIGH = 5.0;         // ...at 260 km/h the car pushes wide
 const GRIP_BRAKE = 3.2;        // weight transfer onto the front axle
 const GRIP_DRIFT = 4.4;        // rear tyres broken loose in a power drift
 const LAT_ACCEL = 34;          // m/s^2 of lateral grip (arcade slicks)
-const STEER_RATE = 2.95;       // rad/s at low speed
-const STEER_FALLOFF = 0.42;
+/* Steering is tyre-driven, not yaw-driven. The input swings the front wheels
+to a real angle; the lock falls away with speed like a real rack; a bicycle
+model turns that wheel angle at road speed into the yaw the car wants; and the
+body's yaw rate chases that request through a slip-angle lag. Nothing pivots
+the car directly, so holding a lock at 250 km/h pushes the nose wide instead of
+snapping the whole block sideways. */
+const WHEELBASE = 2.95;        // m between the axles (matches the model)
+const STEER_LOCK_LOW = 0.55;   // rad of front-wheel angle at a crawl (~31 deg)
+const STEER_LOCK_HIGH = 0.09;  // ...the floor the lock falls to at top speed
+const STEER_LOCK_FALL = 9;     // lock = HIGH + (LOW-HIGH)/(1 + sn*this)
+const STEER_RATE = 4.2;        // rad/s the wheels may swing into a turn
+const STEER_RETURN = 5.6;      // rad/s they self-centre on their own
+const YAW_RESPONSE = 8.8;      // 1/s the body catches up with the wheels
+const YAW_RESPONSE_DRIFT = 12.5; // rear tyres lit: the nose comes round faster
+const ROLL_GAIN = 0.0019;      // rad of body lean per m/s^2 of lateral load
+const ROLL_MAX = 0.06;         // ~3.4 deg: reads as weight, never a motorcycle
+const PITCH_GAIN = 0.0008;     // rad of dive/squat per m/s^2
+const PITCH_MAX = 0.026;
 
 /* AI driving assist look-ahead, in metres: short at low speed so it only
    sees the next corner, long at top speed so there is room to slow for it. */
@@ -111,6 +127,11 @@ function buildCarMesh() {
   const car = new THREE.Group();
   car.name = 'test-car';
 
+  // the bodywork rides in its own group so it can roll and pitch on the
+  // suspension while the wheels stay planted on the road
+  const shell = new THREE.Group();
+  car.add(shell);
+
   // there is no environment map, so metalness only eats diffuse light: kept low
   // enough that the bodywork still shows its colour in shade
   const bodyMat = new THREE.MeshStandardMaterial({ color: 0x5d7689, metalness: 0.18, roughness: 0.38 });
@@ -125,59 +146,59 @@ function buildCarMesh() {
   // main body
   const lower = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.36, 4.15), darkMat);
   lower.position.y = 0.42;
-  car.add(lower);
+  shell.add(lower);
 
   const chassis = new THREE.Mesh(new THREE.BoxGeometry(2.06, 0.46, 4.5), bodyMat);
   chassis.position.y = 0.7;
-  car.add(chassis);
+  shell.add(chassis);
 
   // nose wedge
   const nose = new THREE.Mesh(new THREE.BoxGeometry(1.96, 0.28, 1.5), bodyMat);
   nose.position.set(0, 0.96, 1.55);
   nose.rotation.x = -0.1;
-  car.add(nose);
+  shell.add(nose);
 
   const splitter = new THREE.Mesh(new THREE.BoxGeometry(2.12, 0.1, 0.7), darkMat);
   splitter.position.set(0, 0.46, 2.2);
-  car.add(splitter);
+  shell.add(splitter);
 
   // cabin
   const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.62, 0.5, 1.95), bodyMat);
   cabin.position.set(0, 1.08, -0.15);
-  car.add(cabin);
+  shell.add(cabin);
 
   const windscreen = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.42, 1.6), glassMat);
   windscreen.position.set(0, 1.16, 0.18);
-  car.add(windscreen);
+  shell.add(windscreen);
 
   // accent stripes
   for (const side of [-1, 1]) {
     const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.06, 3.6), accentMat);
     stripe.position.set(side * 1.04, 0.94, 0.1);
-    car.add(stripe);
+    shell.add(stripe);
     const skirt = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.2, 2.7), accentMat);
     skirt.position.set(side * 0.98, 0.42, -0.2);
-    car.add(skirt);
+    shell.add(skirt);
   }
 
   // rear wing
   const wing = new THREE.Mesh(new THREE.BoxGeometry(2.14, 0.1, 0.56), accentMat);
   wing.position.set(0, 1.44, -2.0);
-  car.add(wing);
+  shell.add(wing);
   for (const side of [-1, 1]) {
     const support = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.46, 0.32), darkMat);
     support.position.set(side * 0.8, 1.2, -2.0);
-    car.add(support);
+    shell.add(support);
   }
 
   // lights
   for (const side of [-1, 1]) {
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, 0.1), headMat);
     head.position.set(side * 0.62, 0.9, 2.28);
-    car.add(head);
+    shell.add(head);
     const tail = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.16, 0.08), brakeMat);
     tail.position.set(side * 0.66, 0.9, -2.28);
-    car.add(tail);
+    shell.add(tail);
   }
 
   // wheels
@@ -210,7 +231,7 @@ function buildCarMesh() {
     flame.rotation.x = -Math.PI / 2;
     flame.position.set(side * 0.48, 0.62, -2.65);
     flame.visible = false;
-    car.add(flame);
+    shell.add(flame);
     flames.push(flame);
   }
 
@@ -225,7 +246,7 @@ function buildCarMesh() {
     const m = new THREE.Mesh(muzzleGeo, muzzleMat);
     m.position.set(side * 0.62, 0.98, 2.42);
     m.visible = false;
-    car.add(m);
+    shell.add(m);
     muzzles.push(m);
   }
 
@@ -236,7 +257,7 @@ function buildCarMesh() {
     }
   });
 
-  car.userData = { wheels, flames, brakeMat, muzzles };
+  car.userData = { wheels, flames, brakeMat, muzzles, shell };
   return car;
 }
 
@@ -312,6 +333,10 @@ export class DriveTest {
     this.hintIndex = -1;
     this.wheelSpin = 0;
     this.steerVisual = 0;
+    this.steerAngle = 0;      // rad of front-wheel angle actually on the car
+    this.yawVel = 0;          // rad/s the body is actually rotating at
+    this.bodyRoll = 0;        // suspension lean, rad
+    this.bodyPitch = 0;       // dive / squat, rad
     this.camSnap = true;
     this.mode = 'chase';
     this.modeIndex = 0;
@@ -505,6 +530,13 @@ export class DriveTest {
     this.position.y = sample.pos.y;
     this.velocity.set(0, 0, 0);
     this._vLong = 0;
+    // a held yaw rate or steering angle from before the reset would carry the
+    // car straight off the line again
+    this.yawVel = 0;
+    this.steerAngle = 0;
+    this.steerVisual = 0;
+    this.bodyRoll = 0;
+    this.bodyPitch = 0;
     this.yaw = Math.atan2(tan.x, tan.z);
     this.car.position.copy(this.position);
     this.car.quaternion.setFromAxisAngle(UP, this.yaw);
@@ -580,22 +612,38 @@ export class DriveTest {
     const assistBrake = this._assist.brake;
     const assistCut = this._assist.cut;
 
-    // steering
+    /* ---- steering: the stick swings the wheels, the tyres turn the car ---- */
     let steer = THREE.MathUtils.clamp(
       (keys.left ? 1 : 0) - (keys.right ? 1 : 0) + input.steer, -1, 1
     );
     if (assistOn) steer = THREE.MathUtils.clamp(steer + this._wallSteer, -1, 1);
     const speedAbs = Math.abs(vLong);
     const sn = Math.min(speedAbs / MAX_SPEED, 1);
-    const steerFactor = Math.min(1, speedAbs / 6) * (1 - STEER_FALLOFF * sn);
+    // lock falls away with speed in the same shape as a real rack: most of a
+    // turn at a crawl, only a few degrees left at 260 km/h
+    const lock = STEER_LOCK_HIGH + (STEER_LOCK_LOW - STEER_LOCK_HIGH) / (1 + sn * STEER_LOCK_FALL);
+    const wantAngle = steer * lock;
+    // nothing snaps: the wheels swing at a finite rate and self-centre faster
+    // than they turn in, which is what makes a flick of the thumb read as a
+    // steer instead of a teleport
+    const aligning = Math.abs(wantAngle) < Math.abs(this.steerAngle)
+      && (wantAngle === 0 || Math.sign(wantAngle) === Math.sign(this.steerAngle));
+    const swing = aligning ? STEER_RETURN : STEER_RATE;
+    this.steerAngle += THREE.MathUtils.clamp(wantAngle - this.steerAngle, -swing * dt, swing * dt);
+
     // a power drift is brake + steering at speed: the rear steps out and the
     // nose rotates past where the tyres would otherwise let it
-    const drift = brakeInput && speedAbs > 18 && Math.abs(steer) > 0.18;
+    const drift = brakeInput && speedAbs > 18 && Math.abs(this.steerAngle) > 0.045;
     const yawCap = (LAT_ACCEL * (drift ? 1.12 : 1)) / Math.max(speedAbs, 8);
-    const yawRate = THREE.MathUtils.clamp(
-      steer * STEER_RATE * steerFactor * (vLong < -0.4 ? -1 : 1), -yawCap, yawCap
-    );
-    this.yaw += yawRate * dt;
+    // bicycle model: the wheelbase turns a front-wheel angle at road speed into
+    // the yaw the car is asking for, and the tyre budget caps it
+    const yawAsk = (vLong * Math.tan(this.steerAngle)) / WHEELBASE;
+    const yawTarget = THREE.MathUtils.clamp(yawAsk, -yawCap, yawCap);
+    // the body trails the wheels by a slip angle, so the rotation builds over
+    // about 0.15 s; a lit-up rear axle shortens that lag
+    const yawK = (drift ? YAW_RESPONSE_DRIFT : YAW_RESPONSE) * (0.85 + 0.15 * (1 - sn));
+    this.yawVel += (yawTarget - this.yawVel) * (1 - Math.exp(-yawK * dt));
+    this.yaw += this.yawVel * dt;
     this.steerVisual += (steer * 0.38 - this.steerVisual) * Math.min(1, dt * 12);
 
     const fwd = _fwd.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
@@ -705,6 +753,18 @@ export class DriveTest {
     fwdSlope.normalize();
     _xAxis.crossVectors(up, fwdSlope).normalize();
     const targetQuat = _quat.setFromRotationMatrix(_basis.makeBasis(_xAxis, up, fwdSlope));
+
+    /* ---- chassis load: the shell leans out of the corner and dives under
+       braking while the wheels stay flat on the road ---- */
+    const rollTarget = THREE.MathUtils.clamp(this.latAccel * ROLL_GAIN, -ROLL_MAX, ROLL_MAX);
+    const pitchTarget = THREE.MathUtils.clamp(-this.accelLong * PITCH_GAIN, -PITCH_MAX, PITCH_MAX);
+    const loadK = 1 - Math.exp(-9 * dt);
+    this.bodyRoll += (rollTarget - this.bodyRoll) * loadK;
+    this.bodyPitch += (pitchTarget - this.bodyPitch) * loadK;
+    const shell = car.userData.shell;
+    shell.rotation.z = this.bodyRoll;
+    shell.rotation.x = this.bodyPitch;
+
     car.position.copy(this.position);
     if (this.camSnap) car.quaternion.copy(targetQuat);
     else car.quaternion.slerp(targetQuat, 1 - Math.exp(-14 * dt));
@@ -713,7 +773,7 @@ export class DriveTest {
     this.wheelSpin -= vLong * dt / 0.46;
     for (const w of car.userData.wheels) {
       w.wheel.rotation.x = this.wheelSpin;
-      if (w.front) w.pivot.rotation.y = this.steerVisual;
+      if (w.front) w.pivot.rotation.y = this.steerAngle;
     }
     const flameOn = boosting && vLong > 2;
     for (const f of car.userData.flames) {

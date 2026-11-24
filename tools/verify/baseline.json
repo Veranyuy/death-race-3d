@@ -6,32 +6,32 @@
       "height": 440
     },
     "track": 0,
-    "recorded": "2026-11-23"
+    "recorded": "2026-11-24"
   },
   "assist": {
     "off": {
       "brakeS": 0,
       "peakBrake": 0,
-      "contactS": 3.85,
+      "contactS": 4.12,
       "hits": 6,
-      "minKmh": 78,
-      "hairpinKmh": 97,
+      "minKmh": 81,
+      "hairpinKmh": 95,
       "maxKmh": 243,
-      "slipDeg": 18
+      "slipDeg": 19
     },
     "low": {
-      "brakeS": 14.18,
+      "brakeS": 14.53,
       "peakBrake": 0.39,
       "contactS": 0,
       "hits": 0,
-      "minKmh": 136,
-      "hairpinKmh": 136,
+      "minKmh": 137,
+      "hairpinKmh": 137,
       "maxKmh": 243,
       "slipDeg": 5
     },
     "high": {
-      "brakeS": 18.85,
-      "peakBrake": 0.4,
+      "brakeS": 18.78,
+      "peakBrake": 0.39,
       "contactS": 0,
       "hits": 0,
       "minKmh": 117,
@@ -42,8 +42,8 @@
   },
   "drift": {
     "preSpeed": 196,
-    "driftSpeed": 15,
-    "peakSlipDeg": 21,
+    "driftSpeed": 22,
+    "peakSlipDeg": 16,
     "maxPuffs": 24,
     "afterPuffs": 0,
     "afterVisible": false

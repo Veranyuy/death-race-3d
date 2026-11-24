@@ -231,6 +231,10 @@ const SCENARIOS = `(() => {
     d.hintIndex = startIndex;
     d.lastU = startIndex / tr.samples.length;
     d.nitro = 100; d.armor = 100; d.camSnap = true;
+    // the smoke density follows the adaptive quality tier, so a machine that
+    // governors to a lower step would report a different puff count: pin it so
+    // the two smoke measurements mean the same thing on every run
+    d.smokeDensity = 1;
     d._assist.brake = 0; d._assist.cut = 0;
     d._wallSteer = 0;
     d.keys.forward = false; d.keys.back = false;
@@ -296,7 +300,11 @@ const SCENARIOS = `(() => {
     maxPuffs = Math.max(maxPuffs, d.puffMesh.count);
   }
   const driftSpeed = Math.round(Math.abs(d._vLong) * 3.6);
+  // a real stop, not just a zeroed vector: with the throttle still held the car
+  // drives back into the barrier and keeps emitting, which measures random
+  // puff lifetimes instead of the pool draining
   d.keys.back = false; d.input.brake = 0; d.input.steer = 0;
+  d.keys.forward = false; d.input.throttle = 0;
   d.velocity.set(0, 0, 0);
   for (let i = 0; i < 120; i++) { tr.update(dt); d.update(dt); }
   const afterPuffs = d.puffMesh.count;
