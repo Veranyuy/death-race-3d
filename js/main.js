@@ -134,10 +134,18 @@ driver.combat = combat;
 // attached so a context that a phone call or a background tab suspended is
 // resumed by the next touch.
 const audio = createAudio();
-const unlockAudio = () => audio.unlock();
-addEventListener('pointerdown', unlockAudio, { passive: true });
-addEventListener('keydown', unlockAudio);
-addEventListener('click', unlockAudio);
+
+/** The first real gesture does both jobs: it starts the audio context, which
+    iOS refuses to create anywhere else, and — while the grid is armed — it
+    starts the countdown. `gridArmed` is read at event time, long after the
+    module has finished evaluating. */
+function onLaunchGesture() {
+  audio.unlock();
+  if (gridArmed) startCountdown();
+}
+addEventListener('pointerdown', onLaunchGesture, { passive: true });
+addEventListener('keydown', onLaunchGesture);
+addEventListener('click', onLaunchGesture);
 
 /* ------------------------------------------------------------ track state */
 
@@ -276,7 +284,7 @@ function applyTrack(index) {
   lapTotalEl.textContent = `/${driver.lapTotal}`;
   fieldSizeEl.textContent = `/${driver.fieldSize}`;
   showToast(`${def.name.toUpperCase()}  //  CIRCUIT LOADED`, '#9fe9f2');
-  startCountdown();
+  armGrid();
   refreshPerfChip();
   refreshDiag();
 }
@@ -450,6 +458,7 @@ function showToast(text, color = '#eaf6f8') {
 
 const lightsEl = document.getElementById('lights');
 const lightsText = document.getElementById('lightsText');
+const lightsHint = document.getElementById('lightsHint');
 const lampCols = lightsEl ? [...lightsEl.querySelectorAll('.lamp')] : [];
 const LIGHT_STEP_MS = 620;      // one column per beat, like a real gantry
 const LIGHTS_OUT_MIN = 350;     // the hold after the last lamp is random, so
@@ -458,6 +467,10 @@ const LIGHTS_OUT_MAX = 900;     // the launch can never be anticipated
 let phase = 'grid';             // grid | racing | done
 let gridTimer = 0;
 let lightIndex = 0;
+// true between a circuit load and the player's first tap: the gantry is up and
+// the car is held, but no countdown is running yet. Nothing ticks on its own,
+// so a phone that loads the page while pocketed cannot burn the launch.
+let gridArmed = false;
 
 function paintLights(n) {
   for (let i = 0; i < lampCols.length; i++) lampCols[i].classList.toggle('on', i < n);
@@ -473,11 +486,13 @@ function clearGridTimer() {
     Drivers rev on the line until this moment. */
 function launch() {
   clearGridTimer();
+  gridArmed = false;
   phase = 'racing';
   driver.gridLock = false;
   paintLights(0);
   lightsEl?.classList.add('go');
   if (lightsText) lightsText.textContent = 'GO';
+  if (lightsHint) lightsHint.hidden = true;
   audio.go();
   gridTimer = setTimeout(() => {
     gridTimer = 0;
@@ -502,6 +517,7 @@ function nextLight() {
     because the driver holds the whole field on the grid. */
 function startCountdown() {
   clearGridTimer();
+  gridArmed = false;
   phase = 'grid';
   lightIndex = 0;
   driver.gridLock = true;
@@ -509,13 +525,33 @@ function startCountdown() {
   lightsEl.hidden = false;
   lightsEl.classList.remove('go');
   if (lightsText) lightsText.textContent = 'HOLD GAS TO REV';
+  if (lightsHint) lightsHint.hidden = true;
   paintLights(0);
   gridTimer = setTimeout(nextLight, LIGHT_STEP_MS);
+}
+
+/** Race-ready but not yet running: gantry up, prompt showing, pedals dead.
+    The first tap or keypress starts the countdown (see onLaunchGesture), so
+    the lights only ever count while somebody is watching them — and that same
+    gesture is what unlocks Web Audio on iOS. */
+function armGrid() {
+  clearGridTimer();
+  gridArmed = true;
+  phase = 'grid';
+  lightIndex = 0;
+  driver.gridLock = true;
+  if (!lightsEl) return;
+  lightsEl.hidden = false;
+  lightsEl.classList.remove('go');
+  if (lightsText) lightsText.textContent = 'HOLD GAS TO REV';
+  if (lightsHint) lightsHint.hidden = false;
+  paintLights(0);
 }
 
 /** Debug / harness path: skip the gantry and put the pedals live at once. */
 function startRace() {
   clearGridTimer();
+  gridArmed = false;
   phase = 'racing';
   driver.gridLock = false;
   paintLights(0);
@@ -523,6 +559,7 @@ function startRace() {
     lightsEl.classList.remove('go');
     lightsEl.hidden = true;
   }
+  if (lightsHint) lightsHint.hidden = true;
 }
 
 /* -------------------------------------------------------------- HUD sync */
@@ -611,12 +648,14 @@ function syncHud() {
 function showResults() {
   if (raceOver || !track) return;
   raceOver = true;
+  gridArmed = false;
   phase = 'done';
   clearGridTimer();
   if (lightsEl) {
     lightsEl.classList.remove('go');
     lightsEl.hidden = true;
   }
+  if (lightsHint) lightsHint.hidden = true;
 
   const laps = driver.lapTotal;
   const total = driver.finalTime;
@@ -895,6 +934,7 @@ window.__DEATHRACE = {
   restartRace() { restartRace(); },
   startRace() { startRace(); },
   get phase() { return phase; },
+  get armed() { return gridArmed; },
   get gridLock() { return driver.gridLock; },
   get audio() {
     return {
@@ -903,6 +943,7 @@ window.__DEATHRACE = {
       enabled: audio.enabled,
       volume: audio.volume,
       voices: audio.voiceCount,
+      engine: audio.engine,
     };
   },
   controls,
