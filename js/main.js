@@ -716,7 +716,43 @@ addEventListener('orientationchange', () => {
   // iOS reports stale dimensions on the orientation event itself
   setTimeout(onViewportChange, 120);
   setTimeout(onViewportChange, 400);
+  // after each re-layout, in case Safari nudged the zoom while rotating
+  setTimeout(resetPageScale, 150);
+  setTimeout(resetPageScale, 450);
 });
+
+/* ------------------------------------------------------ page scale guard */
+
+// iPhone Safari can still end up scaled even though the markup forbids zoom
+// (a stray pinch across both control clusters, or a double tap the input guards
+// missed). visualViewport.scale is read-only, so the only way back is to hand
+// Safari a changed viewport declaration and re-anchor the document. Both
+// declarations below are the same lock with the scale keys in a different
+// order: a real value change for the meta to react to (which is what drops the
+// zoom) but identical in effect, so nothing on screen moves. Runs only on an
+// actual drift and never more than twice a second, so a resize loop cannot
+// start.
+const viewportMeta = document.querySelector('meta[name="viewport"]');
+const VIEWPORT_LOCK = 'width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
+const VIEWPORT_LOCK_ALT = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover';
+let scaleResetAt = 0;
+
+function resetPageScale() {
+  const vv = window.visualViewport;
+  if (!vv || Math.abs(vv.scale - 1) < 0.01) return;
+  const now = performance.now();
+  if (now - scaleResetAt < 500) return;
+  scaleResetAt = now;
+  if (viewportMeta) {
+    const current = viewportMeta.getAttribute('content') || '';
+    viewportMeta.setAttribute('content', current.trim() === VIEWPORT_LOCK ? VIEWPORT_LOCK_ALT : VIEWPORT_LOCK);
+  }
+  window.scrollTo(0, 0);
+  onViewportChange();
+}
+
+window.visualViewport?.addEventListener('resize', resetPageScale);
+addEventListener('resize', resetPageScale);
 
 document.addEventListener('visibilitychange', () => {
   last = performance.now();
