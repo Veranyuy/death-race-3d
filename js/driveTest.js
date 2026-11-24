@@ -301,6 +301,9 @@ export class DriveTest {
     this.velocity = new THREE.Vector3();
     this.yaw = 0;
     this.nitro = 100;
+    // latched nitro: one tap arms it, and it burns hands-free until empty or
+    // until it is tapped off again
+    this.nitroActive = false;
     this.lap = 1;
     this.lastU = 0;
     this.lapLock = 0;
@@ -328,7 +331,7 @@ export class DriveTest {
     this.finalTime = 0;
     this.finalPosition = 1;
     this.state = {
-      speedKmh: 0, lap: 1, nitro: 100, boosting: false,
+      speedKmh: 0, lap: 1, nitro: 100, boosting: false, nitroActive: false,
       lapTime: 0, bestLap: 0, lastLap: 0,
       armor: 100,
       position: 1, fieldSize: 7, lapTotal: 3,
@@ -351,7 +354,7 @@ export class DriveTest {
     this._wallSteer = 0;
 
     // analog input written by js/controls.js (touch, tilt, auto-accelerate)
-    this.input = { steer: 0, throttle: 0, brake: 0, boost: 0, gun: false, oil: false };
+    this.input = { steer: 0, throttle: 0, brake: 0, gun: false, oil: false };
     this.armor = 100;
     this.flash = 0;
     this.racePos = 1;
@@ -391,7 +394,7 @@ export class DriveTest {
     camera.add(this.cockpitRig);
     scene.add(camera);
 
-    this.keys = { forward: false, back: false, left: false, right: false, boost: false, gun: false, oil: false };
+    this.keys = { forward: false, back: false, left: false, right: false, gun: false, oil: false };
     this._bind();
   }
 
@@ -404,7 +407,9 @@ export class DriveTest {
     };
     addEventListener('keydown', (e) => {
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
-        this.keys.boost = true;
+        // nitro is a latch, so only the press toggles it; the keyup does not
+        // touch it
+        if (!e.repeat) this.toggleNitro();
         e.preventDefault();
         return;
       }
@@ -440,10 +445,6 @@ export class DriveTest {
       }
     });
     addEventListener('keyup', (e) => {
-      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
-        this.keys.boost = false;
-        return;
-      }
       if (e.code === 'Space') {
         this.keys.gun = false;
         return;
@@ -453,7 +454,7 @@ export class DriveTest {
     });
     addEventListener('blur', () => {
       this.keys.forward = this.keys.back = this.keys.left = this.keys.right = false;
-      this.keys.boost = this.keys.gun = this.keys.oil = false;
+      this.keys.gun = this.keys.oil = false;
     });
   }
 
@@ -463,6 +464,7 @@ export class DriveTest {
     this._size.copy(size);
     track.bounds.getCenter(this._center);
     this.nitro = 100;
+    this.nitroActive = false;
     this.lap = 1;
     this.lapLock = 0;
     this.messages.length = 0;
@@ -484,6 +486,16 @@ export class DriveTest {
     this.lastU = startIndex / track.samples.length;
     this.hintIndex = startIndex;
     this.camSnap = true;
+  }
+
+  /** Flip the bottle latch and return its new state, so the caller can tell a
+      cut from a refused tap. Only legal while the car is actually racing and
+      the meter has something in it, which is also what keeps a tap on the
+      results sheet or on the grid from doing anything. */
+  toggleNitro() {
+    const want = !this.nitroActive;
+    this.nitroActive = want && !this.gridLock && !this.finished && this.nitro > 0.5;
+    return this.nitroActive;
   }
 
   placeAt(sample, tan) {
@@ -535,7 +547,7 @@ export class DriveTest {
     const locked = this.gridLock;
     const throttleInput = !locked && (keys.forward || input.throttle > 0.05);
     const brakeInput = !locked && (keys.back || input.brake > 0.05);
-    const boostInput = !locked && (keys.boost || input.boost > 0.05);
+    const boostInput = !locked && this.nitroActive;
 
     const prevVLong = this._vLong;
     const prevYaw = this.yaw;
@@ -545,8 +557,15 @@ export class DriveTest {
       vLong = 0;
     }
     const wantBoost = boostInput && this.nitro > 0.5 && vLong > -0.5;
-    if (wantBoost) this.nitro = Math.max(0, this.nitro - 26 * dt);
-    else this.nitro = Math.min(100, this.nitro + 2.6 * dt);
+    if (wantBoost) {
+      // 16/s: a full bottle is a ~6.2 s burn. A lap here runs about 100 s, so
+      // that is roughly a long straight plus the corner after it — long enough
+      // to feel like a decision on a phone instead of a twitch
+      this.nitro = Math.max(0, this.nitro - 16 * dt);
+      // bottle dry: the latch lets go on the same frame the burn ends, so the
+      // trickle of regen can never make the boost stutter on and off
+      if (this.nitro <= 0.5) this.nitroActive = false;
+    } else this.nitro = Math.min(100, this.nitro + 2.6 * dt);
     const boosting = wantBoost && this.nitro > 0;
     this.state.boosting = boosting;
 
@@ -615,7 +634,13 @@ export class DriveTest {
     }
     // aero drag acts whether or not the throttle is down
     vLong -= Math.sign(vLong) * AERO_DRAG * vLong * vLong * dt;
-    vLong = THREE.MathUtils.clamp(vLong, -REVERSE_MAX, maxSpeed * 1.02);
+    // Just off the bottle the car is allowed to carry its overspeed instead of
+    // being snapped down to the normal limit; aero drag bleeds it back over the
+    // next second, so the burn ends in a coast rather than a wall.
+    const ceiling = boosting
+      ? maxSpeed * 1.02
+      : Math.max(maxSpeed * 1.02, Math.min(vLong, BOOST_SPEED));
+    vLong = THREE.MathUtils.clamp(vLong, -REVERSE_MAX, ceiling);
 
     // lateral grip: less of it the faster you go, more of it under braking,
     // almost none while the rear tyres are lit up in a drift
@@ -764,6 +789,7 @@ export class DriveTest {
     this.state.speedKmh = Math.round(Math.abs(vLong) * 3.6);
     this.state.lap = this.lap;
     this.state.nitro = this.nitro;
+    this.state.nitroActive = this.nitroActive;
     this.state.armor = this.armor;
     this.state.position = this.racePos;
     this.state.fieldSize = this.fieldSize;
@@ -780,6 +806,7 @@ export class DriveTest {
     this.timing = false;
     this.finalTime = this.raceTime;
     this.finalPosition = this.racePos;
+    this.nitroActive = false;
     this.pushMessage('RACE COMPLETE', '#9dffc0');
   }
 

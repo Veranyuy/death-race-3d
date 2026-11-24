@@ -82,7 +82,7 @@
       </div>
       <div class="row"><span>ENGINE AUDIO</span><button class="switch" id="toggleSound" aria-pressed="true"><i></i></button></div>
       <div class="row"><span>VOLUME</span><input id="volumeRange" type="range" min="0" max="100" step="5" value="80" aria-label="Engine volume" /></div>
-      <p>GAS drives, BRAKE stops. Nitro pulls even with GAS released. Auto-accelerate hides GAS and throttles for you. Shift nitro &middot; Space gun &middot; E rocket.</p>
+      <p>GAS drives, BRAKE stops. Nitro pulls even with GAS released; tap it once to latch the burn and tap again to cut it. Auto-accelerate hides GAS and throttles for you. Shift nitro &middot; Space gun &middot; E rocket.</p>
     </div>
   </div>
 
@@ -94,7 +94,7 @@
 
     <div class="action">
       <div class="action-grid">
-        <button id="nitroBtn" class="btn nitro" aria-label="Nitro boost"><span>NITRO</span></button>
+        <button id="nitroBtn" class="btn nitro" aria-label="Nitro boost, tap to latch or cancel" aria-pressed="false"><span>NITRO</span></button>
         <button id="brakeBtn" class="btn brake" aria-label="Brake and drift"><span>BRAKE</span></button>
         <button id="gunBtn" class="btn gun" aria-label="Primary gun, hold to fire"><span>GUN</span><i class="ammo" id="gunAmmo">120</i></button>
         <button id="missileBtn" class="btn weapon missile" aria-label="Launch missile"><span>MSL</span><i class="ammo" id="missileAmmo">4</i></button>
@@ -154,7 +154,7 @@
   <div id="toast" class="toast"></div>
 
   <div id="hint" class="hint">
-    <b>WASD</b> drive &middot; <b>SHIFT</b> nitro &middot; <b>SPACE</b> gun &middot;
+    <b>WASD</b> drive &middot; <b>SHIFT</b> toggles nitro &middot; <b>SPACE</b> gun &middot;
     <b>E</b> missile &middot; <b>Q</b> oil &middot; <b>F</b> shield &middot; <b>R</b> reset &middot;
     <b>C</b> camera &middot; <b>1&ndash;3</b> circuit
   </div>

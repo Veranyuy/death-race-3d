@@ -58,7 +58,7 @@ export function createControls(driver, options = {}) {
   }
 
   const held = {
-    left: false, right: false, gas: false, brake: false, nitro: false,
+    left: false, right: false, gas: false, brake: false,
     gun: false, oil: false, missile: false, shield: false,
   };
   const state = {
@@ -128,7 +128,6 @@ export function createControls(driver, options = {}) {
   bindHold(el.right, 'right');
   bindHold(el.gas, 'gas');
   bindHold(el.brake, 'brake');
-  bindHold(el.nitro, 'nitro');
   bindHold(el.gun, 'gun');
   bindHold(el.oil, 'oil');
   bindHold(el.missile, 'missile', (down) => {
@@ -136,6 +135,39 @@ export function createControls(driver, options = {}) {
   });
   bindHold(el.shield, 'shield', (down) => {
     if (down) combat?.toggleShield();
+  });
+
+  /* ----------------------------------------------------------------- nitro */
+
+  /** Nitro is a latch, not a hold: one tap arms the bottle and the burn then
+      runs hands-free until the meter is empty or the player taps it off. It is
+      deliberately not routed through bindHold, because everything that ends a
+      hold — pointerup, touchend, a stolen touch — must leave this one running. */
+  function toggleNitro() {
+    // the driver owns the gate (racing, not finished, bottle not dry); a dry
+    // bottle is the one refusal worth a word to the player
+    const was = driver.nitroActive;
+    if (driver.toggleNitro() === was) {
+      if (!was && driver.nitro <= 0.5) onMessage?.('NITRO EMPTY', '#8fa1aa');
+      return false;
+    }
+    onMessage?.(was ? 'NITRO CUT' : 'NITRO BURNING', was ? '#8fa1aa' : '#35f2ff');
+    return true;
+  }
+
+  let nitroTappedAt = 0;
+  el.nitro?.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    nitroTappedAt = performance.now();
+    // a momentary press flash only; the lit state is the button's own `.active`
+    el.nitro.classList.add('held');
+    setTimeout(() => el.nitro.classList.remove('held'), 110);
+    toggleNitro();
+  });
+  // keyboard / assistive-tech activation arrives as a detail-less click
+  el.nitro?.addEventListener('click', (e) => {
+    if (e.detail === 0 && performance.now() - nitroTappedAt > 400) toggleNitro();
   });
 
   /* --------------------------------------------------------------- toggles */
@@ -419,7 +451,6 @@ export function createControls(driver, options = {}) {
       ? (state.launched ? 1 : 0)
       : (held.gas ? 1 : 0);
     driver.input.brake = held.brake ? 1 : 0;
-    driver.input.boost = held.nitro ? 1 : 0;
     driver.input.gun = held.gun;
     driver.input.oil = held.oil;
     syncWeapons();

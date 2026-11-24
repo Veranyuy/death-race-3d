@@ -245,6 +245,12 @@ html, body {
   background: linear-gradient(90deg, #1a85a0, var(--cyan));
   box-shadow: 0 0 8px rgba(53, 242, 255, 0.55);
 }
+/* the meter itself flares while the latched burn is draining it */
+.hud.boosting .gauge.nitro label { color: #e8feff; }
+.hud.boosting .gauge.nitro .bar b {
+  background: linear-gradient(90deg, var(--cyan), #e8feff);
+  box-shadow: 0 0 16px rgba(220, 253, 255, 0.9);
+}
 .gauge.shield .bar b {
   background: linear-gradient(90deg, #2b5fa8, #7fcfff);
   box-shadow: 0 0 8px rgba(127, 207, 255, 0.55);
@@ -622,6 +628,27 @@ html, body {
 }
 .btn.nitro { color: #bff6fb; border-color: rgba(53, 242, 255, 0.32); }
 .btn.nitro.held { background: rgba(53, 242, 255, 0.28); border-color: #35f2ff; }
+/* latched boost: the key stays lit after the finger lifts, so "armed and
+   burning" is readable without looking at the meter, with a slow pulse */
+.btn.nitro.active {
+  color: #04161a;
+  background: linear-gradient(180deg, #a9fbff, #35f2ff);
+  border-color: #e9feff;
+  box-shadow: 0 0 20px rgba(53, 242, 255, 0.65);
+  animation: nitro-burn 0.9s ease-in-out infinite;
+}
+/* dry bottle: no glow and a flat frame, so a dead key cannot look armed */
+.btn.nitro.empty {
+  color: #5b6a72;
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(120, 140, 150, 0.22);
+  box-shadow: none;
+  animation: none;
+}
+@keyframes nitro-burn {
+  0%, 100% { box-shadow: 0 0 12px rgba(53, 242, 255, 0.45); }
+  50% { box-shadow: 0 0 26px rgba(210, 253, 255, 0.9); }
+}
 .btn.gun { color: #ffd9b5; border-color: rgba(255, 138, 36, 0.32); }
 .btn.gun.held { background: rgba(255, 138, 36, 0.32); border-color: #ff8a24; }
 

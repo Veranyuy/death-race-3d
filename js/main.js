@@ -164,6 +164,7 @@ const speedEl = document.getElementById('speed');
 const lapEl = document.getElementById('lap');
 const nitroFillEl = document.getElementById('nitroFill');
 const nitroPctEl = document.getElementById('nitroPct');
+const nitroBtnEl = document.getElementById('nitroBtn');
 const toastEl = document.getElementById('toast');
 const fpsEl = document.getElementById('fps');
 const fpsValueEl = document.getElementById('fpsValue');
@@ -567,6 +568,8 @@ function startRace() {
 let hudSpeed = -1;
 let hudLap = -1;
 let hudNitro = -1;
+let hudNitroArmed = null;
+let hudNitroEmpty = null;
 let hudArmor = -1;
 let hudPos = -1;
 let hudBoost = null;
@@ -602,6 +605,19 @@ function syncHud() {
     hudNitro = n;
     nitroFillEl.style.width = `${n}%`;
     nitroPctEl.textContent = `${n}%`;
+  }
+  // the button has to read at a glance on a phone: lit while the latch is on,
+  // grey while the bottle is dry
+  const armed = !!st.nitroActive;
+  if (armed !== hudNitroArmed) {
+    hudNitroArmed = armed;
+    nitroBtnEl?.classList.toggle('active', armed);
+    nitroBtnEl?.setAttribute('aria-pressed', String(armed));
+  }
+  const empty = n <= 0;
+  if (empty !== hudNitroEmpty) {
+    hudNitroEmpty = empty;
+    nitroBtnEl?.classList.toggle('empty', empty);
   }
   const lapTime = formatLapTime(st.lapTime);
   if (lapTime !== hudTime) {
