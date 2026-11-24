@@ -41,6 +41,12 @@ const ACCEL = 33;
 const BOOST_ACCEL = 48;
 const BRAKE = 80;
 const REVERSE_MAX = 15;
+/* Coasting: with GAS released and no brake the car is only slowed by the
+   tyres' rolling resistance and by aero drag. Aero drag is also what the
+   engine fights at the top end, so being off the throttle at 250 km/h feels
+   like the same car at full throttle — momentum carries into the corner. */
+const COAST_ROLL = 1.8;        // m/s^2 of rolling resistance, GAS released
+const AERO_DRAG = 0.0016;      // quadratic drag (1/m); sets the top speed
 /* Cornering model: `grip` is how fast lateral velocity is bled off into the
    car's heading. It falls off with speed, so momentum carries the car wide in
    a fast entry, and it rises under braking as weight moves onto the front
@@ -337,6 +343,9 @@ export class DriveTest {
     // AI driving assist is on by default for touch players, off for keyboard
     const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
     this.assist = { mode: coarse ? 'high' : 'off' };
+    // set while the start lights are still counting down: the pedals are dead
+    // until the shell opens the grid, so the car can rev without creeping
+    this.gridLock = false;
     // only what the next frame or the HUD actually reads is kept here
     this._assist = { brake: 0, cut: 0, need: 0, safeSpeed: 0 };
     this._wallSteer = 0;
@@ -520,14 +529,22 @@ export class DriveTest {
     const car = this.car;
     const keys = this.keys;
     const input = this.input;
-    const throttleInput = keys.forward || input.throttle > 0.05;
-    const brakeInput = keys.back || input.brake > 0.05;
-    const boostInput = keys.boost || input.boost > 0.05;
+    // on the grid every pedal is ignored: the countdown owns the launch. The
+    // rest of update still runs, so the camera settles, the wheels and revs
+    // respond and the wait reads as a start rather than a freeze
+    const locked = this.gridLock;
+    const throttleInput = !locked && (keys.forward || input.throttle > 0.05);
+    const brakeInput = !locked && (keys.back || input.brake > 0.05);
+    const boostInput = !locked && (keys.boost || input.boost > 0.05);
 
     const prevVLong = this._vLong;
     const prevYaw = this.yaw;
     let vLong = this.velocity.dot(_fwd.set(Math.sin(this.yaw), 0, Math.cos(this.yaw)));
-    const wantBoost = boostInput && this.nitro > 0.5 && vLong > 1;
+    if (locked) {
+      this.velocity.set(0, 0, 0);
+      vLong = 0;
+    }
+    const wantBoost = boostInput && this.nitro > 0.5 && vLong > -0.5;
     if (wantBoost) this.nitro = Math.max(0, this.nitro - 26 * dt);
     else this.nitro = Math.min(100, this.nitro + 2.6 * dt);
     const boosting = wantBoost && this.nitro > 0;
@@ -566,28 +583,38 @@ export class DriveTest {
     let vLat = this.velocity.dot(right);
 
     const maxSpeed = boosting ? BOOST_SPEED : MAX_SPEED;
-    const accel = boosting ? BOOST_ACCEL : ACCEL;
 
     // the assist feathers the throttle and adds brake rather than replacing
     // the player's own input
     const drive = throttleInput ? 1 - assistCut : 0;
     const brakeAmt = Math.min(1, (brakeInput ? 1 : 0) + assistBrake);
 
+    if (boosting) {
+      /* Nitro is its own thrust source, so tapping it with GAS released still
+         pulls the car — the whole point of the surge. With GAS held the engine
+         is already working, so the bottle leans in a little less and the two
+         simply add up instead of the throttle being required to move. */
+      const taper = Math.max(0.12, 1 - Math.max(vLong, 0) / BOOST_SPEED);
+      const thrust = drive > 0.02 ? BOOST_ACCEL * 0.7 : BOOST_ACCEL;
+      vLong += thrust * taper * dt;
+    }
     if (drive > 0.02 && vLong < maxSpeed) {
       const taper = Math.max(0.18, 1 - Math.max(vLong, 0) / maxSpeed);
-      vLong += accel * taper * drive * dt;
+      vLong += ACCEL * taper * drive * dt;
     }
     if (brakeAmt > 0.02) {
       if (vLong > 0.3) vLong -= BRAKE * brakeAmt * dt;
       else if (brakeInput && vLong > -REVERSE_MAX) vLong -= 20 * dt;
     }
-    if (drive <= 0.02 && brakeAmt <= 0.02) vLong *= Math.exp(-0.55 * dt);
-
-    // drag + rolling resistance
-    vLong -= Math.sign(vLong) * 0.0016 * vLong * vLong * dt;
-    if (Math.abs(vLong) > 0.2 && !throttleInput && !brakeInput) {
-      vLong -= Math.sign(vLong) * 2.2 * dt;
+    /* Lift-off: rolling resistance only, never a hidden brake. The car keeps
+       its momentum and bleeds speed over seconds, and nitro keeps its own
+       thrust clean rather than being eaten by the coast term. */
+    if (!boosting && drive <= 0.02 && brakeAmt <= 0.02 && Math.abs(vLong) > 0.02) {
+      const roll = Math.min(COAST_ROLL * dt, Math.abs(vLong));
+      vLong -= Math.sign(vLong) * roll;
     }
+    // aero drag acts whether or not the throttle is down
+    vLong -= Math.sign(vLong) * AERO_DRAG * vLong * vLong * dt;
     vLong = THREE.MathUtils.clamp(vLong, -REVERSE_MAX, maxSpeed * 1.02);
 
     // lateral grip: less of it the faster you go, more of it under braking,

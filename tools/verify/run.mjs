@@ -222,6 +222,9 @@ const SCENARIOS = `(() => {
   };
 
   const reset = () => {
+    // the game now opens on a five-light countdown that holds the pedals, so
+    // every scenario skips the gantry and starts racing at once
+    DR.startRace();
     const startIndex = Math.max(1, Math.round((30 / tr.length) * tr.samples.length));
     const s = tr.samples[startIndex];
     d.placeAt(s, s.tan);

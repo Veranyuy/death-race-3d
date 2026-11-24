@@ -80,7 +80,9 @@
           <button data-assist="high" aria-pressed="true">HIGH</button>
         </div>
       </div>
-      <p>GAS drives, BRAKE stops. Auto-accelerate hides GAS and throttles for you. Shift nitro &middot; Space gun &middot; E rocket.</p>
+      <div class="row"><span>ENGINE AUDIO</span><button class="switch" id="toggleSound" aria-pressed="true"><i></i></button></div>
+      <div class="row"><span>VOLUME</span><input id="volumeRange" type="range" min="0" max="100" step="5" value="80" aria-label="Engine volume" /></div>
+      <p>GAS drives, BRAKE stops. Nitro pulls even with GAS released. Auto-accelerate hides GAS and throttles for you. Shift nitro &middot; Space gun &middot; E rocket.</p>
     </div>
   </div>
 
@@ -135,6 +137,17 @@
       <ol id="resultList" class="results-list"></ol>
       <button id="restartBtn" class="results-btn">RACE AGAIN</button>
     </div>
+  </div>
+
+  <div id="lights" class="lights" hidden aria-hidden="true">
+    <div class="lights-gantry">
+      <div class="lamp"><i></i><i></i></div>
+      <div class="lamp"><i></i><i></i></div>
+      <div class="lamp"><i></i><i></i></div>
+      <div class="lamp"><i></i><i></i></div>
+      <div class="lamp"><i></i><i></i></div>
+    </div>
+    <div id="lightsText" class="lights-text">HOLD GAS TO REV</div>
   </div>
 
   <div id="toast" class="toast"></div>

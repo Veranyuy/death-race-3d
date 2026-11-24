@@ -9,6 +9,7 @@ const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 export function createControls(driver, options = {}) {
   const { onMessage, onChange } = options;
   const combat = options.combat || null;
+  const audio = options.audio || null;
   const $ = (id) => document.getElementById(id);
   const el = {
     left: $('steerLeft'),
@@ -27,6 +28,8 @@ export function createControls(driver, options = {}) {
     auto: $('toggleAuto'),
     tilt: $('toggleTilt'),
     assistBtns: [...document.querySelectorAll('[data-assist]')],
+    sound: $('toggleSound'),
+    volume: $('volumeRange'),
     settingsBtn: $('settingsBtn'),
     settingsPanel: $('settingsPanel'),
   };
@@ -48,6 +51,8 @@ export function createControls(driver, options = {}) {
         autoAccel: state.autoAccel,
         tilt: state.tilt,
         assist: driver.assist.mode,
+        sound: state.sound,
+        volume: state.volume,
       }));
     } catch { /* private mode or storage disabled: choice lasts the session */ }
   }
@@ -61,6 +66,10 @@ export function createControls(driver, options = {}) {
     // unreadable preference keeps the manual GAS button
     autoAccel: stored.autoAccel === true,
     tilt: false,
+    // sound is on unless the player muted it; an unreadable volume falls back
+    // to 80 % rather than silence
+    sound: stored.sound !== false,
+    volume: typeof stored.volume === 'number' ? clamp(stored.volume, 0, 1) : 0.8,
     tiltInvert: false,
     launched: false,
     tiltSteer: 0,
@@ -211,6 +220,40 @@ export function createControls(driver, options = {}) {
 
   el.auto?.addEventListener('click', () => setAuto(!state.autoAccel));
   el.tilt?.addEventListener('click', () => { setTilt(!state.tilt); });
+
+  /* ----------------------------------------------------------------- audio */
+
+  function syncAudio() {
+    el.sound?.classList.toggle('on', state.sound);
+    el.sound?.setAttribute('aria-pressed', String(state.sound));
+    if (el.volume) {
+      el.volume.value = String(Math.round(state.volume * 100));
+      el.volume.disabled = !state.sound;
+    }
+    audio?.setEnabled(state.sound);
+    audio?.setVolume(state.volume);
+  }
+
+  function setSound(on) {
+    state.sound = !!on;
+    // this click is itself the user gesture iOS needs to start the context
+    if (state.sound) audio?.unlock();
+    syncAudio();
+    saveSettings();
+    onMessage?.(state.sound ? 'ENGINE AUDIO ON' : 'ENGINE AUDIO MUTED', state.sound ? '#35f2ff' : '#8fa1aa');
+  }
+
+  /** `persist` is false while the slider is being dragged: the level follows
+      the thumb live, but localStorage is only written once the drag ends. */
+  function setVolume(v, persist = true) {
+    state.volume = clamp(Number(v) || 0, 0, 1);
+    syncAudio();
+    if (persist) saveSettings();
+  }
+
+  el.sound?.addEventListener('click', () => setSound(!state.sound));
+  el.volume?.addEventListener('input', () => setVolume(Number(el.volume.value) / 100, false));
+  el.volume?.addEventListener('change', () => saveSettings());
 
   el.settingsBtn?.addEventListener('click', () => {
     if (!el.settingsPanel) return;
@@ -389,6 +432,7 @@ export function createControls(driver, options = {}) {
   }
   syncToggles();
   syncAssist();
+  syncAudio();
 
   // A remembered tilt setting cannot be re-armed at boot because iOS only
   // grants motion access from a user gesture, so it restarts on the first tap.
@@ -404,6 +448,8 @@ export function createControls(driver, options = {}) {
     setAuto,
     setAssist,
     setTilt,
+    setSound,
+    setVolume,
     setTiltInvert(v) { state.tiltInvert = !!v; },
   };
 }

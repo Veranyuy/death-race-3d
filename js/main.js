@@ -5,6 +5,7 @@ import { createControls } from './controls.js';
 import { Opponents, RIVAL_COLORS } from './opponents.js';
 import { Combat } from './combat.js';
 import { QualityGovernor, QUALITY } from './quality.js';
+import { createAudio } from './audio.js';
 
 /* --------------------------------------------------------------- renderer */
 
@@ -126,6 +127,18 @@ const opponents = new Opponents(scene, driver);
 const combat = new Combat(scene, driver, opponents);
 driver.combat = combat;
 
+/* ----------------------------------------------------------------- audio */
+
+// Procedural engine + start tones. The context is only created inside a real
+// gesture, which is the one thing iOS Safari insists on; every listener stays
+// attached so a context that a phone call or a background tab suspended is
+// resumed by the next touch.
+const audio = createAudio();
+const unlockAudio = () => audio.unlock();
+addEventListener('pointerdown', unlockAudio, { passive: true });
+addEventListener('keydown', unlockAudio);
+addEventListener('click', unlockAudio);
+
 /* ------------------------------------------------------------ track state */
 
 let trackIndex = 0;
@@ -212,6 +225,7 @@ const governor = new QualityGovernor({ onTier: applyQuality });
 
 const controls = createControls(driver, {
   combat,
+  audio,
   onMessage: (text, color) => showToast(text, color),
 });
 
@@ -262,6 +276,7 @@ function applyTrack(index) {
   lapTotalEl.textContent = `/${driver.lapTotal}`;
   fieldSizeEl.textContent = `/${driver.fieldSize}`;
   showToast(`${def.name.toUpperCase()}  //  CIRCUIT LOADED`, '#9fe9f2');
+  startCountdown();
   refreshPerfChip();
   refreshDiag();
 }
@@ -431,6 +446,85 @@ function showToast(text, color = '#eaf6f8') {
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1600);
 }
 
+/* ------------------------------------------------------------ start lights */
+
+const lightsEl = document.getElementById('lights');
+const lightsText = document.getElementById('lightsText');
+const lampCols = lightsEl ? [...lightsEl.querySelectorAll('.lamp')] : [];
+const LIGHT_STEP_MS = 620;      // one column per beat, like a real gantry
+const LIGHTS_OUT_MIN = 350;     // the hold after the last lamp is random, so
+const LIGHTS_OUT_MAX = 900;     // the launch can never be anticipated
+
+let phase = 'grid';             // grid | racing | done
+let gridTimer = 0;
+let lightIndex = 0;
+
+function paintLights(n) {
+  for (let i = 0; i < lampCols.length; i++) lampCols[i].classList.toggle('on', i < n);
+}
+
+function clearGridTimer() {
+  if (!gridTimer) return;
+  clearTimeout(gridTimer);
+  gridTimer = 0;
+}
+
+/** Lights out: the pedals go live and the clock starts on the first throttle.
+    Drivers rev on the line until this moment. */
+function launch() {
+  clearGridTimer();
+  phase = 'racing';
+  driver.gridLock = false;
+  paintLights(0);
+  lightsEl?.classList.add('go');
+  if (lightsText) lightsText.textContent = 'GO';
+  audio.go();
+  gridTimer = setTimeout(() => {
+    gridTimer = 0;
+    if (!lightsEl) return;
+    lightsEl.classList.remove('go');
+    lightsEl.hidden = true;
+  }, 1000);
+}
+
+function nextLight() {
+  lightIndex += 1;
+  paintLights(lightIndex);
+  audio.countdown(lightIndex);
+  if (lightIndex < lampCols.length) {
+    gridTimer = setTimeout(nextLight, LIGHT_STEP_MS);
+  } else {
+    gridTimer = setTimeout(launch, LIGHTS_OUT_MIN + Math.random() * (LIGHTS_OUT_MAX - LIGHTS_OUT_MIN));
+  }
+}
+
+/** Five lamps, one per beat, then lights out. Nothing moves until `launch`,
+    because the driver holds the whole field on the grid. */
+function startCountdown() {
+  clearGridTimer();
+  phase = 'grid';
+  lightIndex = 0;
+  driver.gridLock = true;
+  if (!lightsEl) { launch(); return; }
+  lightsEl.hidden = false;
+  lightsEl.classList.remove('go');
+  if (lightsText) lightsText.textContent = 'HOLD GAS TO REV';
+  paintLights(0);
+  gridTimer = setTimeout(nextLight, LIGHT_STEP_MS);
+}
+
+/** Debug / harness path: skip the gantry and put the pedals live at once. */
+function startRace() {
+  clearGridTimer();
+  phase = 'racing';
+  driver.gridLock = false;
+  paintLights(0);
+  if (lightsEl) {
+    lightsEl.classList.remove('go');
+    lightsEl.hidden = true;
+  }
+}
+
 /* -------------------------------------------------------------- HUD sync */
 
 let hudSpeed = -1;
@@ -517,6 +611,12 @@ function syncHud() {
 function showResults() {
   if (raceOver || !track) return;
   raceOver = true;
+  phase = 'done';
+  clearGridTimer();
+  if (lightsEl) {
+    lightsEl.classList.remove('go');
+    lightsEl.hidden = true;
+  }
 
   const laps = driver.lapTotal;
   const total = driver.finalTime;
@@ -580,6 +680,7 @@ function restartRace() {
   fieldSizeEl.textContent = `/${driver.fieldSize}`;
   syncCameraUI();
   showToast(`${TRACK_DEFS[trackIndex].name.toUpperCase()}  //  RACE RESTARTED`, '#9fe9f2');
+  startCountdown();
 }
 
 restartBtn.addEventListener('click', restartRace);
@@ -657,11 +758,13 @@ function animate(now) {
   if (!raceOver) {
     controls.update(dt);
     driver.update(dt);
-    opponents.update(dt);
+    // rivals hold the grid until the lights go out, so the field launches together
+    if (phase !== 'grid') opponents.update(dt);
     combat.update(dt);
     // checked after the rival update so the field is classified as it stands
     if (driver.finished) showResults();
   }
+  audio.update(dt, driver, opponents, !raceOver);
   // the light only moves on the frames whose shadow map is re-rendered, so the
   // map and the light transform never disagree
   if (frameCount % shadowEvery === 0) {
@@ -790,6 +893,18 @@ window.__DEATHRACE = {
     return [...resultList.children].map((li) => li.textContent.trim());
   },
   restartRace() { restartRace(); },
+  startRace() { startRace(); },
+  get phase() { return phase; },
+  get gridLock() { return driver.gridLock; },
+  get audio() {
+    return {
+      state: audio.contextState,
+      ready: audio.ready,
+      enabled: audio.enabled,
+      volume: audio.volume,
+      voices: audio.voiceCount,
+    };
+  },
   controls,
   opponents,
   combat,
