@@ -145,6 +145,24 @@ const nitroFillEl = document.getElementById('nitroFill');
 const nitroPctEl = document.getElementById('nitroPct');
 const toastEl = document.getElementById('toast');
 const fpsEl = document.getElementById('fps');
+const fpsValueEl = document.getElementById('fpsValue');
+const perfStateEl = document.getElementById('perfState');
+const diagEl = document.getElementById('diag');
+const settingsEl = document.getElementById('settingsPanel');
+const settingsBtn = document.getElementById('settingsBtn');
+const diagEls = {
+  tier: document.getElementById('diagTier'),
+  changes: document.getElementById('diagChanges'),
+  group: document.getElementById('diagGroup'),
+  props: document.getElementById('diagProps'),
+  meshes: document.getElementById('diagMeshes'),
+  skyline: document.getElementById('diagSkyline'),
+  calls: document.getElementById('diagCalls'),
+  tris: document.getElementById('diagTris'),
+  render: document.getElementById('diagRender'),
+  gpu: document.getElementById('diagGpu'),
+  losses: document.getElementById('diagLosses'),
+};
 const lapTimeEl = document.getElementById('lapTime');
 const bestLapEl = document.getElementById('bestLap');
 const positionEl = document.getElementById('position');
@@ -180,9 +198,13 @@ function applyQuality(index, step, reason) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, ratioCap));
   renderer.setSize(window.innerWidth, window.innerHeight);
   if (track) {
-    track.props.visible = step.props;
+    // roadside architecture is never hidden for performance; only the distant
+    // skyline band is allowed to drop on the low steps
+    track.skyline.visible = step.skyline !== false;
     renderer.shadowMap.needsUpdate = true;
   }
+  refreshPerfChip();
+  refreshDiag();
   if (reason !== 'boot') showToast(`GRAPHICS  ${step.id}`, '#8fe8ff');
 }
 
@@ -203,7 +225,7 @@ function applyTrack(index) {
   const def = TRACK_DEFS[index];
   track = createTrack(index);
   scene.add(track.group);
-  track.props.visible = QUALITY[qualityTier].props;
+  track.skyline.visible = QUALITY[qualityTier].skyline !== false;
   gradeMode = null;
 
   track.bounds.getCenter(trackCenter);
@@ -240,7 +262,126 @@ function applyTrack(index) {
   lapTotalEl.textContent = `/${driver.lapTotal}`;
   fieldSizeEl.textContent = `/${driver.fieldSize}`;
   showToast(`${def.name.toUpperCase()}  //  CIRCUIT LOADED`, '#9fe9f2');
+  refreshPerfChip();
+  refreshDiag();
 }
+
+/* ------------------------------------------------------- rendering readout */
+
+/** Compact instance counts: 17767 -> "17.8K". */
+const fmtK = (n) => (n >= 10000 ? `${(n / 1000).toFixed(1)}K` : String(n));
+
+/** Roadside structures actually submitted. Zero `instances` means generation
+    failed; non-zero `instances` with zero `drawn` means something is hiding
+    them (a quality step), which is exactly the difference the on-device
+    readout has to expose. */
+function sceneryStats() {
+  if (!track) return null;
+  const stats = track.group.userData.scenery || {};
+  // sceneryGroup's direct children are the near/mid meshes; the skyline meshes
+  // were re-parented out of it, so one level of iteration is enough
+  let drawn = 0;
+  for (const mesh of track.scenery.children) {
+    if (mesh.isInstancedMesh && mesh.visible) drawn += mesh.count;
+  }
+  let skyline = 0;
+  for (const mesh of track.skyline.children) skyline += mesh.count;
+  return { meshes: stats.meshes || 0, instances: stats.instances || 0, drawn, skyline };
+}
+
+let gpuLabel = '';
+function gpuName() {
+  if (gpuLabel) return gpuLabel;
+  try {
+    const gl = renderer.getContext();
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    gpuLabel = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER)) || 'unknown';
+  } catch {
+    gpuLabel = 'unavailable';
+  }
+  return gpuLabel;
+}
+
+let contextLosses = 0;
+
+/** The always-visible answer to "are the buildings being drawn, and at which
+    quality step" — readable in the top-right corner, no console needed. */
+function refreshPerfChip() {
+  if (!perfStateEl) return;
+  const step = QUALITY[qualityTier].id;
+  const s = sceneryStats();
+  let text = `${step} · NO TRACK`;
+  let tone = 'warn';
+  if (s) {
+    if (s.instances === 0) { text = `${step} · PROPS 0`; tone = 'bad'; }
+    else if (s.drawn === 0) { text = `${step} · PROPS OFF`; tone = 'bad'; }
+    else { text = `${step} · PROPS ${fmtK(s.drawn)}`; tone = 'ok'; }
+  }
+  perfStateEl.textContent = text;
+  perfStateEl.dataset.tone = tone;
+}
+
+/** Full sheet behind the FPS chip: everything needed to tell a quality-step
+    cull apart from a generation or WebGL failure on the phone itself. */
+function refreshDiag() {
+  if (!diagEl || diagEl.hidden) return;
+  const e = diagEls;
+  const s = sceneryStats();
+  const px = renderer.getPixelRatio();
+  const buf = renderer.getDrawingBufferSize(new THREE.Vector2());
+  e.tier.textContent = QUALITY[qualityTier].id;
+  e.changes.textContent = String(governor.changes);
+  if (s) {
+    const propsOn = track.props.visible;
+    e.group.textContent = propsOn ? 'VISIBLE' : 'HIDDEN';
+    e.group.dataset.tone = propsOn ? 'ok' : 'bad';
+    e.props.textContent = `${s.drawn} / ${s.instances}`;
+    e.props.dataset.tone = s.drawn > 0 ? 'ok' : 'bad';
+    e.meshes.textContent = String(s.meshes);
+    e.skyline.textContent = track.skyline.visible ? `ON (${s.skyline})` : `OFF (${s.skyline})`;
+  } else {
+    for (const key of ['group', 'props', 'meshes', 'skyline']) {
+      e[key].textContent = '--';
+      delete e[key].dataset.tone;
+    }
+  }
+  e.calls.textContent = String(renderer.info.render.calls);
+  e.tris.textContent = fmtK(renderer.info.render.triangles);
+  e.render.textContent = `${px.toFixed(1)}x ${buf.x}×${buf.y}`;
+  e.gpu.textContent = gpuName();
+  e.gpu.title = gpuName();
+  e.losses.textContent = String(contextLosses);
+  e.losses.dataset.tone = contextLosses > 0 ? 'bad' : 'ok';
+}
+
+function toggleDiag(force) {
+  if (!diagEl) return;
+  const open = force === undefined ? diagEl.hidden : !!force;
+  diagEl.hidden = !open;
+  fpsEl?.setAttribute('aria-expanded', String(open));
+  if (open) {
+    // the settings sheet occupies the same corner
+    if (settingsEl) settingsEl.hidden = true;
+    settingsBtn?.setAttribute('aria-expanded', 'false');
+    refreshDiag();
+  }
+}
+
+fpsEl?.addEventListener('click', () => toggleDiag());
+
+canvas.addEventListener('webglcontextlost', (e) => {
+  // keeping the default cancelled is what lets Safari rebuild the context
+  e.preventDefault();
+  contextLosses += 1;
+  showToast('WEBGL CONTEXT LOST', '#ff4a32');
+  refreshPerfChip();
+  refreshDiag();
+});
+canvas.addEventListener('webglcontextrestored', () => {
+  renderer.shadowMap.needsUpdate = true;
+  showToast('WEBGL CONTEXT RESTORED', '#4dff86');
+  refreshDiag();
+});
 
 /* ---------------------------------------------------------------- camera UI */
 
@@ -540,11 +681,11 @@ function animate(now) {
   fpsTime += dt;
   if (fpsTime >= 0.5) {
     fpsValue = fpsFrames / fpsTime;
-    fpsEl.textContent = qualityTier === 0
-      ? `${Math.round(fpsValue)} FPS`
-      : `${Math.round(fpsValue)} FPS · ${QUALITY[qualityTier].id}`;
+    if (fpsValueEl) fpsValueEl.textContent = `${Math.round(fpsValue)} FPS`;
     fpsFrames = 0;
     fpsTime = 0;
+    refreshPerfChip();
+    refreshDiag();
   }
 }
 
@@ -630,8 +771,22 @@ window.__DEATHRACE = {
       pixelRatio: +renderer.getPixelRatio().toFixed(2),
       smoke: driver.smokeDensity,
       props: !!(track && track.props.visible),
+      skyline: !!(track && track.skyline.visible),
       drawCalls: renderer.info.render.calls,
       triangles: renderer.info.render.triangles,
+      contextLosses,
+      gpu: gpuName(),
+    };
+  },
+  /** Roadside structure audit: what the kit built, what is actually drawn, and
+      whether either shared group is visible. */
+  get scenery() {
+    if (!track) return null;
+    return {
+      ...(track.group.userData.scenery || {}),
+      ...sceneryStats(),
+      propsVisible: track.props.visible,
+      skylineVisible: track.skyline.visible,
     };
   },
   governor,

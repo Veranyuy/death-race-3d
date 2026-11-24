@@ -63,12 +63,15 @@
       <div class="tools">
         <button id="cameraBtn" class="chip"><span id="camLabel">CHASE</span></button>
         <button id="settingsBtn" class="chip icon" aria-label="Settings" aria-expanded="false">&#9881;</button>
-        <span id="fps" class="fps">-- FPS</span>
+        <button id="fps" class="fps" aria-label="Rendering diagnostics" aria-expanded="false">
+          <b id="fpsValue">-- FPS</b>
+          <i id="perfState" data-tone="warn">-- &middot; PROPS --</i>
+        </button>
       </div>
     </div>
 
     <div id="settingsPanel" class="settings" hidden>
-      <div class="row"><span>AUTO ACCELERATE</span><button class="switch on" id="toggleAuto" aria-pressed="true"><i></i></button></div>
+      <div class="row"><span>AUTO ACCELERATE</span><button class="switch" id="toggleAuto" aria-pressed="false"><i></i></button></div>
       <div class="row"><span>TILT STEERING</span><button class="switch" id="toggleTilt" aria-pressed="false"><i></i></button></div>
       <div class="row"><span>AI DRIVING ASSIST</span>
         <div class="seg" role="group" aria-label="AI driving assist">
@@ -77,7 +80,7 @@
           <button data-assist="high" aria-pressed="true">HIGH</button>
         </div>
       </div>
-      <p>Touch, tilt or WASD. Shift nitro &middot; Space gun &middot; E rocket.</p>
+      <p>GAS drives, BRAKE stops. Auto-accelerate hides GAS and throttles for you. Shift nitro &middot; Space gun &middot; E rocket.</p>
     </div>
   </div>
 
@@ -89,15 +92,30 @@
 
     <div class="action">
       <div class="action-grid">
-        <button id="gasBtn" class="btn gas" aria-label="Throttle" hidden><span>GAS</span></button>
         <button id="nitroBtn" class="btn nitro" aria-label="Nitro boost"><span>NITRO</span></button>
         <button id="brakeBtn" class="btn brake" aria-label="Brake and drift"><span>BRAKE</span></button>
         <button id="gunBtn" class="btn gun" aria-label="Primary gun, hold to fire"><span>GUN</span><i class="ammo" id="gunAmmo">120</i></button>
         <button id="missileBtn" class="btn weapon missile" aria-label="Launch missile"><span>MSL</span><i class="ammo" id="missileAmmo">4</i></button>
         <button id="oilBtn" class="btn weapon oil" aria-label="Rear oil and smoke, hold to keep laying"><span>OIL</span><i class="ammo" id="oilAmmo">3</i></button>
         <button id="shieldBtn" class="btn weapon shield" aria-label="Toggle ray shield"><span>SHLD</span><i class="ammo" id="shieldCharge">100</i></button>
+        <button id="gasBtn" class="btn gas" aria-label="Gas, hold to accelerate"><span>GAS</span></button>
       </div>
     </div>
+  </div>
+
+  <div id="diag" class="diag" hidden>
+    <div class="diag-head"><span>RENDERING DIAGNOSTICS</span><i>TAP FPS TO CLOSE</i></div>
+    <div class="row"><span>QUALITY STEP</span><b id="diagTier">--</b></div>
+    <div class="row"><span>STEP CHANGES</span><b id="diagChanges">0</b></div>
+    <div class="row"><span>PROPS GROUP</span><b id="diagGroup">--</b></div>
+    <div class="row"><span>ROADSIDE PROPS</span><b id="diagProps">--</b></div>
+    <div class="row"><span>PROP MESHES</span><b id="diagMeshes">--</b></div>
+    <div class="row"><span>SKYLINE BAND</span><b id="diagSkyline">--</b></div>
+    <div class="row"><span>DRAW CALLS</span><b id="diagCalls">--</b></div>
+    <div class="row"><span>TRIANGLES</span><b id="diagTris">--</b></div>
+    <div class="row"><span>RENDER BUFFER</span><b id="diagRender">--</b></div>
+    <div class="row"><span>GPU</span><b id="diagGpu">--</b></div>
+    <div class="row"><span>CONTEXT LOSSES</span><b id="diagLosses">0</b></div>
   </div>
 
   <div id="assistPill" class="assist"><i></i>BRAKE ASSIST</div>

@@ -34,8 +34,9 @@ export function createControls(driver, options = {}) {
   /* ---------------------------------------------------------- preferences */
 
   // Player choices survive a reload. Anything missing, unreadable or out of
-  // range falls through to the defaults: auto-accelerate on, assist on for
-  // touch players (the driver sets that one), tilt off.
+  // range falls through to the defaults: manual GAS (auto-accelerate off, so
+  // the throttle button is always the primary control), assist on for touch
+  // players (the driver sets that one), tilt off.
   const STORE_KEY = 'deathrace3d.settings';
   const stored = (() => {
     try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch { return {}; }
@@ -51,10 +52,14 @@ export function createControls(driver, options = {}) {
     } catch { /* private mode or storage disabled: choice lasts the session */ }
   }
 
-  const held = { left: false, right: false, gas: false, brake: false, nitro: false, gun: false };
+  const held = {
+    left: false, right: false, gas: false, brake: false, nitro: false,
+    gun: false, oil: false, missile: false, shield: false,
+  };
   const state = {
-    // `!== false` keeps the default when the key was never written
-    autoAccel: stored.autoAccel !== false,
+    // only an explicit stored `true` turns auto-throttle on; a first-time or
+    // unreadable preference keeps the manual GAS button
+    autoAccel: stored.autoAccel === true,
     tilt: false,
     tiltInvert: false,
     launched: false,
@@ -63,35 +68,51 @@ export function createControls(driver, options = {}) {
 
   /* ------------------------------------------------------------- pointers */
 
+  // pointerId -> { node, name, onPressChange }; one entry per finger down.
+  // A node can only appear once, so the map alone knows both what is held
+  // and which finger owns it.
+  const holds = new Map();
+
+  const stopEvent = (e) => e.preventDefault();
+  const ownerOf = (node) => {
+    for (const hold of holds.values()) if (hold.node === node) return hold;
+    return null;
+  };
+
   /** Holds a control for as long as its own pointer stays down, so several
-      fingers (steer + nitro + gun) work at once. */
+      fingers (steer + gas + gun) work at once. Every way a touch can end is
+      routed through releasePointer/releaseAll below, because iOS Safari can
+      end a press without delivering a pointerup to the node itself — that is
+      what used to leave a steering arrow stuck on. */
   function bindHold(node, name, onPressChange) {
     if (!node) return;
-    let pointerId = null;
-    const press = (e) => {
-      if (pointerId !== null) return;
-      pointerId = e.pointerId;
-      state.launched = true;
+    node.addEventListener('pointerdown', (e) => {
+      if (ownerOf(node)) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      holds.set(e.pointerId, { node, name, onPressChange });
       held[name] = true;
       node.classList.add('held');
-      try { node.setPointerCapture(pointerId); } catch { /* synthetic pointers */ }
+      // capture keeps the lift on this node even if the thumb slides off it;
+      // unsupported pointer types still release through the window listeners
+      try { node.setPointerCapture(e.pointerId); } catch { /* synthetic pointers */ }
       onPressChange?.(true);
       e.preventDefault();
-    };
-    const release = (e) => {
-      if (pointerId === null) return;
-      if (e && e.pointerId !== undefined && e.pointerId !== pointerId) return;
-      pointerId = null;
-      held[name] = false;
-      node.classList.remove('held');
-      onPressChange?.(false);
-    };
-    node.addEventListener('pointerdown', press);
-    node.addEventListener('pointerup', release);
-    node.addEventListener('pointercancel', release);
-    node.addEventListener('lostpointercapture', release);
-    node.addEventListener('contextmenu', (e) => e.preventDefault());
-    node.addEventListener('dragstart', (e) => e.preventDefault());
+    });
+  }
+
+  function releasePointer(pointerId) {
+    const entry = holds.get(pointerId);
+    if (!entry) return;
+    holds.delete(pointerId);
+    held[entry.name] = false;
+    entry.node.classList.remove('held');
+    entry.onPressChange?.(false);
+  }
+
+  /** One shared panic button: anything that means "no fingers on the glass
+      right now" clears every latched control. */
+  function releaseAll() {
+    for (const pointerId of [...holds.keys()]) releasePointer(pointerId);
   }
 
   bindHold(el.left, 'left');
@@ -121,6 +142,9 @@ export function createControls(driver, options = {}) {
 
   function setAuto(on) {
     state.autoAccel = !!on;
+    // the GAS button is hidden while auto is on, so drop any press it holds
+    // (and release the hidden node's pointer capture) before the relayout
+    if (state.autoAccel) releaseAll();
     syncToggles();
     saveSettings();
   }
@@ -221,15 +245,27 @@ export function createControls(driver, options = {}) {
 
   /* ------------------------------------------------------------- lifecycle */
 
-  function reset() {
-    for (const key of Object.keys(held)) held[key] = false;
-    for (const node of [el.left, el.right, el.gas, el.brake, el.nitro, el.gun, el.oil, el.missile, el.shield]) {
-      node?.classList.remove('held');
-    }
-  }
-
-  addEventListener('blur', reset);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) reset(); });
+  // A lift, an interrupted gesture, a browser-stolen touch, a lost capture, a
+  // phone call or a tab switch all end in the same place. Window-level and in
+  // the capture phase so the release is seen even when the event is retargeted
+  // away from the button that owns the press.
+  addEventListener('pointerup', (e) => releasePointer(e.pointerId), true);
+  addEventListener('pointercancel', (e) => releasePointer(e.pointerId), true);
+  addEventListener('lostpointercapture', (e) => releasePointer(e.pointerId), true);
+  addEventListener('touchend', (e) => {
+    const fingers = e.touches ? e.touches.length : 0;
+    if (fingers === 0) { releaseAll(); return; }
+    // a lift whose pointer event never arrived: reconcile the latched presses
+    // down to the fingers still on the glass, oldest first
+    while (holds.size > fingers) releasePointer(holds.keys().next().value);
+  }, true);
+  addEventListener('touchcancel', releaseAll, true);
+  addEventListener('blur', releaseAll);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
+  // no long-press callout or drag ghost anywhere on the control layer; the
+  // per-button handlers were redundant because the buttons live inside #touch
+  $('touch')?.addEventListener('contextmenu', stopEvent);
+  $('touch')?.addEventListener('dragstart', stopEvent);
 
   // the first tap anywhere counts as "launch", so auto-accelerate does not
   // drive off the line before the player has touched the screen
@@ -286,6 +322,9 @@ export function createControls(driver, options = {}) {
     const steerTouch = (held.left ? 1 : 0) - (held.right ? 1 : 0);
     const steerTilt = state.tilt ? state.tiltSteer : 0;
     driver.input.steer = clamp(steerTouch + steerTilt, -1, 1);
+    // with auto on, the throttle is held down on the player's behalf once they
+    // have started the race; with it off, GAS is the only thing that drives and
+    // lifting the thumb cuts the drive input on the very next frame
     driver.input.throttle = state.autoAccel
       ? (state.launched ? 1 : 0)
       : (held.gas ? 1 : 0);
@@ -314,7 +353,7 @@ export function createControls(driver, options = {}) {
     state,
     held,
     update,
-    reset,
+    reset: releaseAll,
     setAuto,
     setAssist,
     setTilt,

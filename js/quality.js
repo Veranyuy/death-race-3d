@@ -7,12 +7,17 @@
 
 /** Quality steps, best first. Each one is a complete, self-consistent set:
     backing-store scale, shadow refresh period, drift smoke density and whether
-    the decorative props are drawn at all. */
+    the distant skyline band is drawn.
+
+    Roadside structures (halls, containers, gantries, lattice towers, barriers)
+    are never a quality setting: they are instanced and cheap per draw call, and
+    a phone that steps down must still race through a built corridor. Only the
+    far skyline — the most wasteful geometry, never close to the car — drops. */
 export const QUALITY = [
-  { id: 'HIGH', pixelRatio: 2, shadowEvery: 1, smoke: 1, props: true },
-  { id: 'MED', pixelRatio: 1.5, shadowEvery: 2, smoke: 0.6, props: true },
-  { id: 'LOW', pixelRatio: 1, shadowEvery: 3, smoke: 0.35, props: true },
-  { id: 'MIN', pixelRatio: 1, shadowEvery: 4, smoke: 0.15, props: false },
+  { id: 'HIGH', pixelRatio: 2, shadowEvery: 1, smoke: 1, skyline: true },
+  { id: 'MED', pixelRatio: 1.5, shadowEvery: 2, smoke: 0.6, skyline: true },
+  { id: 'LOW', pixelRatio: 1, shadowEvery: 3, smoke: 0.35, skyline: false },
+  { id: 'MIN', pixelRatio: 1, shadowEvery: 4, smoke: 0.15, skyline: false },
 ];
 
 // Every window is a second of wall time, not a fixed frame count: on the slow

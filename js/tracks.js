@@ -1034,6 +1034,18 @@ export function createTrack(index) {
     apron: apronW,
   });
 
+  // The distant skyline is the only prop band the quality governor may drop.
+  // Everything the car actually drives past (halls, containers, gantries,
+  // towers, barriers, fences, lights) stays in sceneryGroup and never hides, so
+  // a phone that steps down still sees a built roadside.
+  const skylineGroup = new THREE.Group();
+  skylineGroup.name = 'skyline';
+  sceneryGroup.add(skylineGroup);
+  for (const name of ['scenery-skyTower', 'scenery-skyBlock']) {
+    const mesh = sceneryGroup.getObjectByName(name);
+    if (mesh) skylineGroup.add(mesh);
+  }
+
   /* ---- nearest-point query ---- */
   function nearest(point, hint = -1) {
     let best = -1;
@@ -1077,9 +1089,11 @@ export function createTrack(index) {
     halfWidth: hw,
     bounds,
     pads,
-    // decorative architecture, so the quality governor can drop it whole
+    // decorative architecture; always visible, with `skyline` the far band the
+    // governor is allowed to cull
     props: propsGroup,
     scenery: sceneryGroup,
+    skyline: skylineGroup,
     groundMaterials,
     startSample,
     sampleAtU,
