@@ -333,7 +333,7 @@ html, body {
 /* rendering diagnostics sheet */
 .diag {
   position: fixed;
-  top: calc(var(--safe-t) + 54px);
+  top: calc(var(--safe-t) + 50px);
   /* opposite corner from the action cluster: the sheet never covers a
      steering pad, the GAS bar or a weapon button while it is open */
   left: var(--safe-l);
@@ -347,6 +347,13 @@ html, body {
   pointer-events: auto;
   -webkit-user-select: none;
   user-select: none;
+  /* the sheet stops dead above the weapon row and scrolls internally, so an
+     open readout can never sit on top of a control on a short screen */
+  max-height: calc(100vh - var(--safe-t) - var(--safe-b) - 215px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 .diag[hidden] { display: none; }
 .diag-head {
@@ -368,7 +375,7 @@ html, body {
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  padding: 3px 0;
+  padding: 2px 0;
   font-family: ui-monospace, monospace;
   font-size: 9.5px;
   letter-spacing: 0.1em;
@@ -524,6 +531,16 @@ html, body {
 }
 .touch > * { pointer-events: auto; }
 
+/* The left hand owns steering and weapons. The weapon row sits directly above
+   the arrows, so on a straight the thumb lifts off the pad onto GUN without
+   leaving the driving line, while the right thumb never leaves GAS / NITRO. */
+.left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+}
+
 .steer { display: flex; gap: 8px; }
 
 .pad {
@@ -569,12 +586,12 @@ html, body {
   align-items: flex-end;
 }
 
-/* three columns of two rows: drive row on top, weapons on the bottom, all
-   inside one thumb arc on a landscape phone. The gap is the touch target
-   spacing — fingers should never straddle two buttons. */
+/* the drive row (NITRO / BRAKE) with the GAS bar spanning beneath it, inside
+   one right-thumb arc. The gap is the touch target spacing — a thumb should
+   never straddle two buttons. */
 .action-grid {
   display: grid;
-  grid-template-columns: repeat(3, clamp(54px, 10.5vw, 68px));
+  grid-template-columns: repeat(2, clamp(56px, 11.5vw, 72px));
   grid-auto-rows: clamp(46px, 9.6vw, 58px);
   gap: 10px;
 }
@@ -686,13 +703,42 @@ html, body {
   pointer-events: none;
 }
 
+/* Weapon strip above the steering pads: one short row of thin glass, wide
+   enough to hit with the side of a thumb and narrow enough that the road, the
+   car and the next apex stay visible behind it. */
+.combat {
+  display: grid;
+  grid-template-columns: repeat(4, clamp(40px, 9vw, 47px));
+  grid-auto-rows: clamp(38px, 8.4vw, 44px);
+  gap: 6px;
+}
+.combat .btn {
+  gap: 0;
+  padding: 4px 2px 3px;
+  border-radius: 9px;
+  font-size: 8.5px;
+  /* lighter fill than the drive buttons: the view matters more here */
+  background: linear-gradient(180deg, rgba(18, 24, 30, 0.42), rgba(8, 12, 16, 0.58));
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+/* the count reads inside the button rather than floating in the corner, which
+   is what keeps the row this short */
+.combat .btn .ammo {
+  position: static;
+  right: auto;
+  bottom: auto;
+  font-size: 8px;
+  line-height: 1;
+  opacity: 0.95;
+}
+
 /* --------------------------------------------------------- toast / hint */
 
-/* corner-assist tell: sits above the steering pad, out of the driving line */
+/* corner-assist tell: sits above the weapon strip, out of the driving line */
 .assist {
   position: fixed;
   left: calc(var(--safe-l) + 8px);
-  bottom: calc(var(--safe-b) + 118px);
+  bottom: calc(var(--safe-b) + 178px);
   display: flex;
   align-items: center;
   gap: 5px;
