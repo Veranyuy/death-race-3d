@@ -267,6 +267,53 @@ export function createControls(driver, options = {}) {
   $('touch')?.addEventListener('contextmenu', stopEvent);
   $('touch')?.addEventListener('dragstart', stopEvent);
 
+  /* ---------------------------------------------------- page-zoom lockdown */
+
+  // The viewport meta and the fixed root already forbid scaling, but iOS Safari
+  // still treats two thumbs landing on the left and right controls as a pinch
+  // and zooms the whole page until reload. These runtime cancellations are the
+  // guarantee. The settings sheet is exempt while it is open so its rows stay
+  // normally scrollable.
+  const sheetOpen = () => !!el.settingsPanel && !el.settingsPanel.hidden;
+  const inSheet = (target) =>
+    sheetOpen() && target instanceof Node && el.settingsPanel.contains(target);
+
+  for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+    document.addEventListener(type, (e) => {
+      if (!inSheet(e.target)) e.preventDefault();
+    }, { passive: false });
+  }
+
+  // Multi-finger scroll/zoom is never wanted on the game surface. The start
+  // event skips the control buttons on purpose: those hold their press through
+  // pointer events and must not be cancelled mid-pinch. Moves are always
+  // cancelled once a second thumb is down, which stops the page pan itself.
+  const onControl = (target) => target instanceof Element && !!target.closest('#touch button');
+  document.addEventListener('touchstart', (e) => {
+    if (e.touches.length > 1 && !inSheet(e.target) && !onControl(e.target)) e.preventDefault();
+  }, { passive: false });
+  document.addEventListener('touchmove', (e) => {
+    if (e.touches.length > 1 && !inSheet(e.target)) e.preventDefault();
+  }, { passive: false });
+
+  // double-tap zoom: swallow the second tap, not the first, so a normal tap
+  // still activates a chip or a switch. Buttons are left alone because they
+  // already carry a non-zoom touch-action and quick repeated taps (camera,
+  // ammo) must still reach their click handler.
+  let lastTapAt = 0;
+  const DOUBLE_TAP_MS = 320;
+  document.addEventListener('touchend', (e) => {
+    if (e.touches.length || e.changedTouches.length !== 1 || inSheet(e.target)) return;
+    if (e.target instanceof Element && e.target.closest('button')) return;
+    if (e.timeStamp - lastTapAt < DOUBLE_TAP_MS) {
+      e.preventDefault();
+      lastTapAt = 0;
+      return;
+    }
+    lastTapAt = e.timeStamp;
+  }, { passive: false });
+  document.addEventListener('dblclick', stopEvent, { passive: false });
+
   // the first tap anywhere counts as "launch", so auto-accelerate does not
   // drive off the line before the player has touched the screen
   addEventListener('pointerdown', () => { state.launched = true; }, { passive: true });

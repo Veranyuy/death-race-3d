@@ -16,9 +16,24 @@
 
 * { box-sizing: border-box; }
 
+/* every button is a game control, never a page-zoom target; the pads and action
+   buttons below narrow this further to touch-action: none */
+button {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The page is a fixed, non-scrolling game surface. Pinning the root removes the
+   document scroll/zoom box entirely, so two thumbs on opposite controls can
+   never be interpreted as a pinch on the page itself. */
 html, body {
   margin: 0;
   padding: 0;
+  position: fixed;
+  inset: 0;
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -28,8 +43,11 @@ html, body {
   -webkit-font-smoothing: antialiased;
   touch-action: none;
   overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   -webkit-user-select: none;
   user-select: none;
+  -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -41,6 +59,9 @@ html, body {
   display: block;
   outline: none;
   touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 /* ------------------------------------------------------------------ HUD */
@@ -375,6 +396,8 @@ html, body {
   pointer-events: auto;
 }
 .settings[hidden] { display: none; }
+/* the sheet lives inside the fixed root, so it keeps its own vertical pan */
+.settings { touch-action: pan-y; }
 .settings .row {
   display: flex;
   align-items: center;
@@ -792,6 +815,8 @@ html, body {
   padding: 0;
   min-height: 0;
   overflow-y: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
   gap: 2px;
