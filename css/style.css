@@ -12,6 +12,12 @@
   --safe-r: max(10px, env(safe-area-inset-right, 0px));
   --safe-t: max(8px, env(safe-area-inset-top, 0px));
   --safe-b: max(8px, env(safe-area-inset-bottom, 0px));
+
+  /* the left-hand control column: weapon strip over the steering pads. The
+     panels that float above it measure against these, so the sizes live in
+     one place and a resize can never leave them out of step. */
+  --pad-h: clamp(64px, 15vw, 90px);
+  --combat-h: clamp(38px, 8.4vw, 44px);
 }
 
 * { box-sizing: border-box; }
@@ -334,8 +340,7 @@ html, body {
 .diag {
   position: fixed;
   top: calc(var(--safe-t) + 50px);
-  /* opposite corner from the action cluster: the sheet never covers a
-     steering pad, the GAS bar or a weapon button while it is open */
+  /* parked over the left column, so it stays away from the drive buttons */
   left: var(--safe-l);
   z-index: 8;
   width: 268px;
@@ -347,11 +352,15 @@ html, body {
   pointer-events: auto;
   -webkit-user-select: none;
   user-select: none;
-  /* the sheet stops dead above the weapon row and scrolls internally, so an
-     open readout can never sit on top of a control on a short screen */
-  max-height: calc(100vh - var(--safe-t) - var(--safe-b) - 215px);
+  /* the sheet ends 8px above the weapon strip and scrolls internally, so an
+     open readout can never sit on top of a control on a short screen. Its
+     height is the viewport minus everything below it, measured from the
+     same sizes the column itself uses */
+  max-height: calc(
+    100vh - var(--safe-t) - 50px
+    - var(--safe-b) - 14px - var(--pad-h) - 7px - var(--combat-h) - 8px
+  );
   overflow-y: auto;
-  overscroll-behavior: contain;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
 }
@@ -546,7 +555,7 @@ html, body {
 .pad {
   position: relative;
   width: clamp(72px, 17vw, 98px);
-  height: clamp(64px, 15vw, 90px);
+  height: var(--pad-h);
   background: linear-gradient(180deg, rgba(16, 22, 28, 0.55), rgba(8, 12, 16, 0.72));
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 14px;
@@ -579,15 +588,9 @@ html, body {
 }
 .pad.held::before { border-right-color: #ffd7ae; }
 
-.action {
-  /* corner padding lives on .touch, so the grid never touches the edge */
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-}
-
 /* the drive row (NITRO / BRAKE) with the GAS bar spanning beneath it, inside
-   one right-thumb arc. The gap is the touch target spacing — a thumb should
+   one right-thumb arc. Corner padding lives on .touch, so the grid never
+   touches the edge. The gap is the touch target spacing — a thumb should
    never straddle two buttons. */
 .action-grid {
   display: grid;
@@ -709,7 +712,7 @@ html, body {
 .combat {
   display: grid;
   grid-template-columns: repeat(4, clamp(40px, 9vw, 47px));
-  grid-auto-rows: clamp(38px, 8.4vw, 44px);
+  grid-auto-rows: var(--combat-h);
   gap: 6px;
 }
 .combat .btn {
@@ -725,8 +728,6 @@ html, body {
    is what keeps the row this short */
 .combat .btn .ammo {
   position: static;
-  right: auto;
-  bottom: auto;
   font-size: 8px;
   line-height: 1;
   opacity: 0.95;
@@ -738,7 +739,11 @@ html, body {
 .assist {
   position: fixed;
   left: calc(var(--safe-l) + 8px);
-  bottom: calc(var(--safe-b) + 178px);
+  /* stacked clear of the left column: .touch padding, the pads, the column
+     gap, the weapon strip, then a thumb's width of air */
+  bottom: calc(
+    var(--safe-b) + 14px + var(--pad-h) + 7px + var(--combat-h) + 23px
+  );
   display: flex;
   align-items: center;
   gap: 5px;
