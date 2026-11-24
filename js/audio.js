@@ -371,6 +371,11 @@ export function createAudio() {
     rivalAcc = 0;
     const px = driver.car.position.x;
     const pz = driver.car.position.z;
+    // the results sheet has to silence the whole field, not just the hero: a
+    // grid still pulling past the player under a stopped race was the loudest
+    // thing on that screen. `running` false sends every rival to zero, and the
+    // voice's own smoothed gain turns that into the same fade as the player.
+    const field = running ? 1 : 0;
     for (let i = 1; i < voices.length; i++) {
       const car = opponents.cars[i - 1];
       if (!car) continue;
@@ -378,7 +383,7 @@ export function createAudio() {
       const near = Math.max(0, 1 - Math.hypot(car.x - px, car.z - pz) / 140);
       const kmh = car.v * 3.6;
       voices[i].set(
-        now, kmh, 0.55, 0, near * near * 0.16 * voices[i].profile.level
+        now, kmh, 0.55, 0, field * near * near * 0.16 * voices[i].profile.level
       );
     }
   }
