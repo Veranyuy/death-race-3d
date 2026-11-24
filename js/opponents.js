@@ -51,17 +51,17 @@ export class Opponents {
 
     this.body = new THREE.InstancedMesh(
       BODY_GEO,
-      new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.34, roughness: 0.36 }),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.2, roughness: 0.38 }),
       GRID.length
     );
     this.cabin = new THREE.InstancedMesh(
       CABIN_GEO,
-      new THREE.MeshStandardMaterial({ color: 0x151d24, metalness: 0.32, roughness: 0.16 }),
+      new THREE.MeshStandardMaterial({ color: 0x25313a, metalness: 0.2, roughness: 0.16 }),
       GRID.length
     );
     this.wing = new THREE.InstancedMesh(
       WING_GEO,
-      new THREE.MeshStandardMaterial({ color: 0x1b1f23, roughness: 0.55 }),
+      new THREE.MeshStandardMaterial({ color: 0x262c31, roughness: 0.55 }),
       GRID.length
     );
     this.wheels = new THREE.InstancedMesh(

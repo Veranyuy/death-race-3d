@@ -25,12 +25,14 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 // frame. Anything that moves a light or changes what casts must ask for it.
 renderer.shadowMap.autoUpdate = false;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+// a touch above neutral: lifts tarmac, bodywork and facades out of the murk
+// while ACES still rolls the sky highlights off instead of clipping them
+renderer.toneMappingExposure = 1.16;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
-// cool overcast industrial haze; per-circuit values re-applied in applyTrack
-scene.fog = new THREE.Fog(0x7f8a91, 230, 1650);
+// cool industrial haze; per-circuit values re-applied in applyTrack
+scene.fog = new THREE.Fog(0x97a3ab, 280, 2000);
 
 const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 1.2, 12000);
 camera.position.set(0, 40, 120);
@@ -42,9 +44,9 @@ function srgb(hex) {
 }
 
 const skyUniforms = {
-  uTop: { value: srgb(0x2b333b) },
-  uHorizon: { value: srgb(0xa9b3b8) },
-  uSunColor: { value: srgb(0xd9dee0) },
+  uTop: { value: srgb(0x3b4754) },
+  uHorizon: { value: srgb(0xc2ccd1) },
+  uSunColor: { value: srgb(0xe8edf0) },
   uSunDir: { value: new THREE.Vector3(-0.35, 0.78, 0.5).normalize() },
   uCloud: { value: 0.55 },
 };
@@ -104,10 +106,12 @@ scene.add(sky);
 
 /* ---------------------------------------------------------------- lights */
 
-const hemi = new THREE.HemisphereLight(0xa9bcc6, 0x5c5750, 1.25);
+// the hemisphere carries most of the fill: it is what keeps a shaded facade,
+// a fence line and the dark side of a car readable instead of crushed to black
+const hemi = new THREE.HemisphereLight(0xc4d6e2, 0x8a8378, 1.75);
 scene.add(hemi);
 
-const sun = new THREE.DirectionalLight(0xd9dee0, 1.5);
+const sun = new THREE.DirectionalLight(0xe8edf0, 1.75);
 sun.castShadow = true;
 // 1024 keeps mid-range Android/iOS GPUs at 60 FPS (shadow pass is per-frame)
 sun.shadow.mapSize.set(1024, 1024);

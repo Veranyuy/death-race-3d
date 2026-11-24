@@ -415,7 +415,8 @@ function createSceneryKit(parent, tex) {
         hazard: new THREE.MeshStandardMaterial({ map: tex.hazard, roughness: 0.82, metalness: 0.1 }),
         wall: new THREE.MeshStandardMaterial({
           map: tex.wall, roughness: 0.93, metalness: 0.04,
-          emissive: 0x241f1a, emissiveIntensity: 0.55,
+          // a little self-lit bounce keeps a shaded facade from going flat
+          emissive: 0x332c24, emissiveIntensity: 0.7,
         }),
         container: new THREE.MeshStandardMaterial({ map: tex.corrugated, roughness: 0.8, metalness: 0.22 }),
         tire: new THREE.MeshStandardMaterial({ color: 0x1b1d1f, roughness: 0.96 }),

@@ -84,10 +84,10 @@ export const TRACK_DEFS = [
       { u: 0.9369, offset: 3, type: 'armor' },
     ],
     theme: {
-      skyTop: 0x2b333b, skyHorizon: 0xa9b3b8, sun: 0xd9dee0, skyCloud: 0.55,
-      fog: 0x7f8a91, fogNear: 230, fogFar: 1700,
-      hemiSky: 0xa9bcc6, hemiGround: 0x5c5750, hemiIntensity: 1.4,
-      sunIntensity: 1.5,
+      skyTop: 0x3b4754, skyHorizon: 0xc2ccd1, sun: 0xe8edf0, skyCloud: 0.55,
+      fog: 0x97a3ab, fogNear: 280, fogFar: 2000,
+      hemiSky: 0xc4d6e2, hemiGround: 0x8a8378, hemiIntensity: 1.75,
+      sunIntensity: 1.75,
       roadTint: 0xbcb8b1, roadTex: 'asphalt',
       groundColor: 0xc9c3b6, groundTex: 'dirt', overviewLift: 0x27251f,
       gravelColor: 0x8d8a82,
@@ -165,10 +165,10 @@ export const TRACK_DEFS = [
       { u: 0.9525, offset: 3, type: 'armor' },
     ],
     theme: {
-      skyTop: 0x24262b, skyHorizon: 0xab9484, sun: 0xe8d6c8, skyCloud: 0.32,
-      fog: 0x5a5048, fogNear: 250, fogFar: 1650,
-      hemiSky: 0x9aa4ac, hemiGround: 0x4a3b32, hemiIntensity: 1.15,
-      sunIntensity: 1.7,
+      skyTop: 0x33373e, skyHorizon: 0xc8ab97, sun: 0xf2e4d8, skyCloud: 0.32,
+      fog: 0x7b6e63, fogNear: 300, fogFar: 1950,
+      hemiSky: 0xbcc6cf, hemiGround: 0x6d5a4b, hemiIntensity: 1.55,
+      sunIntensity: 1.85,
       roadTint: 0x84817d, roadTex: 'ash',
       groundColor: 0xa89e96, groundTex: 'basalt', overviewLift: 0x35302b,
       gravelColor: 0x4b4038,
@@ -243,10 +243,10 @@ export const TRACK_DEFS = [
       { u: 0.9269, offset: 4, type: 'armor' },
     ],
     theme: {
-      skyTop: 0x25313a, skyHorizon: 0x9dabb2, sun: 0xe6ebee, skyCloud: 0.5,
-      fog: 0x74828b, fogNear: 235, fogFar: 1600,
-      hemiSky: 0xa9c8da, hemiGround: 0x46555c, hemiIntensity: 1.3,
-      sunIntensity: 1.45,
+      skyTop: 0x354656, skyHorizon: 0xbdcbd3, sun: 0xf2f6f8, skyCloud: 0.5,
+      fog: 0x8d9ba5, fogNear: 285, fogFar: 1950,
+      hemiSky: 0xc6e0ee, hemiGround: 0x6a7a83, hemiIntensity: 1.7,
+      sunIntensity: 1.7,
       roadTint: 0xbac1c6, roadTex: 'tarmac',
       groundColor: 0xc6cacb, groundTex: 'tarmac', overviewLift: 0x3a3f43,
       gravelColor: 0x6b7073,
@@ -926,7 +926,7 @@ export function createTrack(index) {
   gantry.position.copy(startSample.pos);
   gantry.rotation.y = yaw;
 
-  const steelMat = new THREE.MeshStandardMaterial({ color: 0x3a444c, roughness: 0.55, metalness: 0.25 });
+  const steelMat = new THREE.MeshStandardMaterial({ color: 0x49545d, roughness: 0.55, metalness: 0.25 });
   const accentMat = new THREE.MeshStandardMaterial({ color: 0xd75a1f, roughness: 0.55, metalness: 0.35 });
   const postSpan = hw + 2.4;
   for (const side of [-1, 1]) {

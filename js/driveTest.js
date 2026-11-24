@@ -111,14 +111,16 @@ function buildCarMesh() {
   const car = new THREE.Group();
   car.name = 'test-car';
 
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x475865, metalness: 0.3, roughness: 0.34 });
-  const accentMat = new THREE.MeshStandardMaterial({ color: 0xd23d1e, metalness: 0.22, roughness: 0.38 });
-  const darkMat = new THREE.MeshStandardMaterial({ color: 0x14181c, metalness: 0.15, roughness: 0.7 });
-  const glassMat = new THREE.MeshStandardMaterial({ color: 0x16242c, metalness: 0.25, roughness: 0.14 });
+  // there is no environment map, so metalness only eats diffuse light: kept low
+  // enough that the bodywork still shows its colour in shade
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x5d7689, metalness: 0.18, roughness: 0.38 });
+  const accentMat = new THREE.MeshStandardMaterial({ color: 0xe04a22, metalness: 0.14, roughness: 0.4 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x1b2126, metalness: 0.12, roughness: 0.7 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x1b2c36, metalness: 0.2, roughness: 0.14 });
   const headMat = new THREE.MeshStandardMaterial({ color: 0x101010, emissive: 0xbfe9ff, emissiveIntensity: 2.4 });
   const brakeMat = new THREE.MeshStandardMaterial({ color: 0x1a0604, emissive: 0xff2a0a, emissiveIntensity: 0.5 });
-  const wheelMat = new THREE.MeshStandardMaterial({ color: 0x181b1e, roughness: 0.9 });
-  const rimMat = new THREE.MeshStandardMaterial({ color: 0xaab4ba, metalness: 0.3, roughness: 0.3 });
+  const wheelMat = new THREE.MeshStandardMaterial({ color: 0x202427, roughness: 0.9 });
+  const rimMat = new THREE.MeshStandardMaterial({ color: 0xc2ccd2, metalness: 0.24, roughness: 0.3 });
 
   // main body
   const lower = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.36, 4.15), darkMat);
