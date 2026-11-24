@@ -322,7 +322,8 @@ export class Combat {
     const hit = this._nearestRival(_muzzle, _dir, GUN_RANGE, 0.988);
     if (hit >= 0) {
       const c = this.opponents.cars[hit];
-      this.opponents.hitCar(hit, 0.055);
+      // the car's WEAPONS stat scales what a round actually takes off
+      this.opponents.hitCar(hit, 0.055 * this.driver.tune.weaponMul);
       this._spawnSparks(c.x, c.y + 0.8, c.z, 1.5, 0xfff0c0);
     }
   }
@@ -538,7 +539,7 @@ export class Combat {
         m.dir.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
         if (_v.lengthSq() < 5 * 5) {
           this._spawnSparks(c.x, c.y + 0.9, c.z, 2.6, 0xffa040);
-          this.opponents.hitCar(m.target, 0.26);
+          this.opponents.hitCar(m.target, 0.26 * this.driver.tune.weaponMul);
           m.live = false;
           continue;
         }

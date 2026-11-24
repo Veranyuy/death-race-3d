@@ -11,8 +11,63 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d1116'/%3E%3Cpath d='M8 22 16 9l8 13z' fill='%23ff8a24'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
-<body>
+<!-- in-garage from the first paint: the race HUD must never flash behind the
+     garage sheet while three.js is still booting -->
+<body class="in-garage">
   <canvas id="game"></canvas>
+
+  <!-- Pre-race garage. The car itself is the live 3D viewport behind this
+       sheet (no second render, no second mesh), so every panel here is
+       translucent and the middle of the screen stays clear. -->
+  <div id="garage" class="garage">
+    <div class="garage-scrim" aria-hidden="true"></div>
+
+    <div class="garage-top">
+      <div class="garage-brand">DEATH<span>RACE</span><b>3D</b></div>
+      <div class="garage-kicker">SELECT YOUR MACHINE</div>
+      <div class="garage-circuit" id="garageCircuit">TERMINAL WASTELAND</div>
+    </div>
+
+    <button id="carPrev" class="garage-nav prev" aria-label="Previous car">&#8249;</button>
+    <button id="carNext" class="garage-nav next" aria-label="Next car">&#8250;</button>
+
+    <div class="garage-bottom">
+      <section class="garage-card">
+        <div class="garage-ident">
+          <b id="garageCarName">GRINDER</b>
+          <span id="garageCarRole" class="garage-badge">BALANCED</span>
+        </div>
+        <p id="garageCarBlurb">Factory all-rounder.</p>
+        <ul class="garage-stats">
+          <li><span>SPEED</span><div class="gbar"><b id="garageStatSpeed"></b></div></li>
+          <li><span>HANDLING</span><div class="gbar"><b id="garageStatHandling"></b></div></li>
+          <li><span>ARMOR</span><div class="gbar"><b id="garageStatArmor"></b></div></li>
+          <li><span>WEAPONS</span><div class="gbar"><b id="garageStatWeapons"></b></div></li>
+        </ul>
+        <div class="garage-dots" id="garageDots" aria-hidden="true"></div>
+      </section>
+
+      <section class="garage-options">
+        <div class="garage-row">
+          <label>CIRCUIT</label>
+          <div class="pills tall" id="garageTracks" role="group" aria-label="Circuit"></div>
+        </div>
+        <div class="garage-row">
+          <label>DIFFICULTY</label>
+          <div class="pills" id="garageDiff" role="group" aria-label="Difficulty"></div>
+        </div>
+        <div class="garage-row">
+          <label>CORNER ASSIST</label>
+          <button id="garageAssist" class="switch" role="switch" aria-checked="true" aria-pressed="true"><i></i></button>
+        </div>
+      </section>
+
+      <button id="startRaceBtn" class="garage-start">
+        <b>START RACE</b>
+        <i id="garageStartSub">GRINDER &middot; PRO</i>
+      </button>
+    </div>
+  </div>
 
   <div id="hud" class="hud">
     <div class="hud-bar">
@@ -138,7 +193,10 @@
         <div><span>FINISH</span><b id="resultField">1/7</b></div>
       </div>
       <ol id="resultList" class="results-list"></ol>
-      <button id="restartBtn" class="results-btn">RACE AGAIN</button>
+      <div class="results-actions">
+        <button id="restartBtn" class="results-btn">RACE AGAIN</button>
+        <button id="garageBtn" class="results-btn ghost">GARAGE</button>
+      </div>
     </div>
   </div>
 

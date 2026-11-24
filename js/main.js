@@ -2,7 +2,8 @@ import * as THREE from './vendor/three.module.js';
 import { TRACK_DEFS, createTrack } from './tracks.js';
 import { DriveTest, formatLapTime, CAM_LABELS } from './driveTest.js';
 import { createControls } from './controls.js';
-import { Opponents, RIVAL_COLORS } from './opponents.js';
+import { Opponents, DIFFICULTIES, DEFAULT_DIFFICULTY } from './opponents.js';
+import { CARS, DEFAULT_CAR } from './cars.js';
 import { Combat } from './combat.js';
 import { QualityGovernor, QUALITY } from './quality.js';
 import { createAudio } from './audio.js';
@@ -157,6 +158,11 @@ let trackIndex = 0;
 let track = null;
 // set once the results sheet is up: the sim stops stepping until a restart
 let raceOver = false;
+/* Garage selection: the car the player takes and the difficulty the field
+   races at. Whether the garage is on screen is `phase === 'garage'` — one
+   piece of flow state, rather than a second flag that can drift from it. */
+let selectedCar = DEFAULT_CAR;
+let selectedDiff = DEFAULT_DIFFICULTY;
 let trackCenter = new THREE.Vector3();
 let trackRadius = 400;
 
@@ -207,6 +213,28 @@ const resultBest = document.getElementById('resultBest');
 const resultField = document.getElementById('resultField');
 const resultList = document.getElementById('resultList');
 const restartBtn = document.getElementById('restartBtn');
+const garageBtn = document.getElementById('garageBtn');
+
+/* garage sheet */
+const garageEl = document.getElementById('garage');
+const garageCircuitEl = document.getElementById('garageCircuit');
+const garageCarNameEl = document.getElementById('garageCarName');
+const garageCarRoleEl = document.getElementById('garageCarRole');
+const garageCarBlurbEl = document.getElementById('garageCarBlurb');
+const garageDotsEl = document.getElementById('garageDots');
+const garageTracksEl = document.getElementById('garageTracks');
+const garageDiffEl = document.getElementById('garageDiff');
+const garageAssistBtn = document.getElementById('garageAssist');
+const garageStartSub = document.getElementById('garageStartSub');
+const startRaceBtn = document.getElementById('startRaceBtn');
+const carPrevBtn = document.getElementById('carPrev');
+const carNextBtn = document.getElementById('carNext');
+const garageStatEls = {
+  speed: document.getElementById('garageStatSpeed'),
+  handling: document.getElementById('garageStatHandling'),
+  armor: document.getElementById('garageStatArmor'),
+  weapons: document.getElementById('garageStatWeapons'),
+};
 
 /* ------------------------------------------------------------- quality */
 
@@ -289,7 +317,9 @@ function applyTrack(index) {
   lapTotalEl.textContent = `/${driver.lapTotal}`;
   fieldSizeEl.textContent = `/${driver.fieldSize}`;
   showToast(`${def.name.toUpperCase()}  //  CIRCUIT LOADED`, '#9fe9f2');
-  armGrid();
+  // in the garage the gantry stays dark and the car stays held; on the track
+  // a circuit change re-arms the start as before
+  if (phase === 'garage') { holdGarage(); syncGarage(); } else { armGrid(); }
   refreshPerfChip();
   refreshDiag();
 }
@@ -469,7 +499,7 @@ const LIGHT_STEP_MS = 620;      // one column per beat, like a real gantry
 const LIGHTS_OUT_MIN = 350;     // the hold after the last lamp is random, so
 const LIGHTS_OUT_MAX = 900;     // the launch can never be anticipated
 
-let phase = 'grid';             // grid | racing | done
+let phase = 'garage';           // garage | grid | racing | done
 let gridTimer = 0;
 let lightIndex = 0;
 // true between a circuit load and the player's first tap: the gantry is up and
@@ -556,6 +586,7 @@ function armGrid() {
 /** Debug / harness path: skip the gantry and put the pedals live at once. */
 function startRace() {
   clearGridTimer();
+  if (phase === 'garage') closeGarage();
   gridArmed = false;
   phase = 'racing';
   driver.gridLock = false;
@@ -566,6 +597,164 @@ function startRace() {
   }
   if (lightsHint) lightsHint.hidden = true;
 }
+
+/* ------------------------------------------------------------------ garage */
+
+/* The garage is the front door: the sim boots held on the grid with the car
+   in a turntable shot, and the gantry only starts counting from START RACE.
+   Rivals are filled from the manifest, so the pack on the grid behind the car
+   is the pack that lines up on it. */
+
+/** Parked on the grid, engine off, nothing counting. */
+function holdGarage() {
+  clearGridTimer();
+  gridArmed = false;
+  phase = 'garage';
+  driver.gridLock = true;
+  if (lightsEl) {
+    lightsEl.classList.remove('go');
+    lightsEl.hidden = true;
+  }
+  if (lightsHint) lightsHint.hidden = true;
+  paintLights(0);
+}
+
+function openGarage(reset = true) {
+  raceOver = false;
+  resultsEl.hidden = true;
+  driver.garage = true;
+  driver.camSnap = true;
+  if (reset && track) {
+    // fresh grid: the race that just finished must not leave damage, ammo or
+    // half a lap on the cars the player is about to look at
+    driver.setTrack(track);
+    opponents.setTrack(track);
+    combat.setTrack(track);
+  }
+  document.body.classList.add('in-garage');
+  garageEl.hidden = false;
+  // holdGarage owns every held state (grid lock, phase, gantry) so a re-entry
+  // from the results sheet cannot leave half of it behind
+  holdGarage();
+  syncGarage();
+}
+
+/** Back to the chase lens on the grid; the caller then runs the gantry. */
+function closeGarage() {
+  garageEl.hidden = true;
+  document.body.classList.remove('in-garage');
+  driver.garage = false;
+  driver.camSnap = true;
+}
+
+/** START RACE: leave the garage and hand the launch to the five lamps. */
+function beginRace() {
+  if (phase !== 'garage') return;
+  closeGarage();
+  startCountdown();
+}
+
+/** The six rivals are every car the player did not take, in roster order. */
+function applyRoster() {
+  const others = CARS.filter((_, i) => i !== selectedCar);
+  opponents.setRoster(others);
+}
+
+function selectCar(index) {
+  const n = CARS.length;
+  selectedCar = ((index % n) + n) % n;
+  // the parked car keeps its grid slot: only its paint and numbers change
+  driver.applyCar(CARS[selectedCar]);
+  applyRoster();
+  syncGarage();
+  return CARS[selectedCar];
+}
+
+function selectDifficulty(index) {
+  selectedDiff = THREE.MathUtils.clamp(index, 0, DIFFICULTIES.length - 1);
+  opponents.setDifficulty(DIFFICULTIES[selectedDiff]);
+  syncGarage();
+  return DIFFICULTIES[selectedDiff];
+}
+
+/** Paints the sheet from the current selection. Touches textContent and class
+    names only, so it is cheap enough to call on every switch. */
+function syncGarage() {
+  const def = CARS[selectedCar];
+  garageCarNameEl.textContent = def.name;
+  garageCarRoleEl.textContent = def.badge;
+  garageCarBlurbEl.textContent = def.blurb;
+  for (const key of ['speed', 'handling', 'armor', 'weapons']) {
+    garageStatEls[key].style.width = `${def.stats[key] * 10}%`;
+  }
+  garageCircuitEl.textContent = TRACK_DEFS[trackIndex].name.toUpperCase();
+  for (let i = 0; i < garageDotsEl.children.length; i++) {
+    garageDotsEl.children[i].classList.toggle('on', i === selectedCar);
+  }
+  for (const btn of garageTracksEl.children) {
+    btn.classList.toggle('active', Number(btn.dataset.index) === trackIndex);
+  }
+  for (let i = 0; i < garageDiffEl.children.length; i++) {
+    garageDiffEl.children[i].classList.toggle('active', i === selectedDiff);
+  }
+  const assistOn = driver.assist.mode !== 'off';
+  garageAssistBtn.classList.toggle('on', assistOn);
+  garageAssistBtn.setAttribute('aria-checked', String(assistOn));
+  garageAssistBtn.setAttribute('aria-pressed', String(assistOn));
+  garageStartSub.textContent = `${def.name} \u00b7 ${DIFFICULTIES[selectedDiff].name}`;
+}
+
+/** Builds the picking controls once: seven dots, three circuits, three modes. */
+function buildGarage() {
+  for (let i = 0; i < CARS.length; i++) {
+    const dot = document.createElement('i');
+    garageDotsEl.appendChild(dot);
+  }
+
+  TRACK_DEFS.forEach((def, i) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.dataset.index = String(i);
+    btn.setAttribute('aria-label', def.name);
+    const parts = def.name.toUpperCase().split(' ');
+    const b = document.createElement('b');
+    b.textContent = parts[0];
+    const sub = document.createElement('i');
+    sub.textContent = parts.slice(1).join(' ');
+    btn.append(b, sub);
+    btn.addEventListener('click', () => {
+      if (i !== trackIndex) applyTrack(i);
+      syncGarage();
+    });
+    garageTracksEl.appendChild(btn);
+  });
+
+  DIFFICULTIES.forEach((def, i) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = def.name;
+    btn.addEventListener('click', () => selectDifficulty(i));
+    garageDiffEl.appendChild(btn);
+  });
+}
+
+buildGarage();
+
+carPrevBtn.addEventListener('click', () => selectCar(selectedCar - 1));
+carNextBtn.addEventListener('click', () => selectCar(selectedCar + 1));
+startRaceBtn.addEventListener('click', () => beginRace());
+garageAssistBtn.addEventListener('click', () => {
+  controls.setAssist(driver.assist.mode === 'off' ? 'high' : 'off');
+  syncGarage();
+});
+
+// on the garage only: arrow keys flip cars, so a desktop run can pick too
+addEventListener('keydown', (e) => {
+  if (phase !== 'garage') return;
+  if (e.code === 'ArrowLeft') { selectCar(selectedCar - 1); e.preventDefault(); }
+  else if (e.code === 'ArrowRight') { selectCar(selectedCar + 1); e.preventDefault(); }
+  else if (e.code === 'Enter' || e.code === 'NumpadEnter') { beginRace(); e.preventDefault(); }
+});
 
 /* -------------------------------------------------------------- HUD sync */
 
@@ -598,7 +787,9 @@ function syncHud() {
     positionEl.textContent = String(st.position);
     fieldSizeEl.textContent = `/${st.fieldSize}`;
   }
-  const armor = Math.round(st.armor);
+  // armour is shown as a percentage of the selected car's own plate, so a
+  // JUGGERNAUT reads 100% at 130 points and a K9 at 78
+  const armor = Math.round((st.armor / driver.tune.armorMax) * 100);
   if (armor !== hudArmor) {
     hudArmor = armor;
     armorFillEl.style.width = `${armor}%`;
@@ -686,7 +877,8 @@ function showResults() {
   const rows = opponents.cars.map((car, i) => ({
     prog: car.s / track.length,
     label: car.label || `RIVAL ${i + 1}`,
-    color: RIVAL_COLORS[i % RIVAL_COLORS.length],
+    // the chip matches the paint the car actually raced in
+    color: car.def.paint.body,
     me: false,
   }));
   rows.push({ prog: playerProg, label: 'YOU', color: 0xff8a24, me: true });
@@ -743,6 +935,8 @@ function restartRace() {
 }
 
 restartBtn.addEventListener('click', restartRace);
+// switch cars, circuits or difficulty without sitting through a race first
+garageBtn.addEventListener('click', () => openGarage());
 
 /* ------------------------------------------------------------------- loop */
 
@@ -818,7 +1012,9 @@ function animate(now) {
     controls.update(dt);
     driver.update(dt);
     // rivals hold the grid until the lights go out, so the field launches together
-    if (phase !== 'grid') opponents.update(dt);
+    // rivals only launch once the lights are out: not in the garage, not on
+    // the gantry, and not while the results sheet is up
+    if (phase === 'racing') opponents.update(dt);
     combat.update(dt);
     // checked after the rival update so the field is classified as it stands
     if (driver.finished) showResults();
@@ -855,6 +1051,11 @@ function animate(now) {
 
 const params = new URLSearchParams(location.search);
 const bootTrack = THREE.MathUtils.clamp(parseInt(params.get('track') || '0', 10) || 0, 0, TRACK_DEFS.length - 1);
+// the chosen car, the rest of the grid and the difficulty come from the
+// manifest before the circuit is built, so the first frame already shows the
+// machine and the pack that will line up behind it
+selectCar(DEFAULT_CAR);
+selectDifficulty(DEFAULT_DIFFICULTY);
 applyTrack(bootTrack);
 if (params.get('cam')) driver.setCameraMode(params.get('cam'));
 // ?quality=0..3 pins a step for hardware A/B runs; otherwise the governor owns it
@@ -864,6 +1065,9 @@ applyQuality(governor.tier, QUALITY[governor.tier], 'boot');
 driver.camSnap = true;
 syncCameraUI();
 updateSunShadow();
+// boot into the garage: the car is on the grid, the gantry is dark, and
+// nothing counts down until START RACE
+openGarage(false);
 animate(performance.now());
 
 function onViewportChange() {
@@ -948,6 +1152,31 @@ window.__DEATHRACE = {
   get finished() { return driver.finished; },
   get finalTime() { return driver.finalTime; },
   get resultsShown() { return !resultsEl.hidden; },
+  /* ---- garage ---- */
+  get garageOpen() { return !garageEl.hidden; },
+  get garageCar() { return CARS[selectedCar].id; },
+  get garageCarName() { return CARS[selectedCar].name; },
+  get garageCarRole() { return CARS[selectedCar].badge; },
+  get garageStats() { return { ...CARS[selectedCar].stats }; },
+  get garageDifficulty() { return DIFFICULTIES[selectedDiff].id; },
+  get garageTrackName() { return TRACK_DEFS[trackIndex].name; },
+  get garageAssist() { return driver.assist.mode; },
+  get garageRoster() { return opponents.cars.map((c) => c.label); },
+  get playerTune() {
+    return {
+      id: driver.carDef ? driver.carDef.id : null,
+      maxKmh: Math.round(driver.tune.maxSpeed * 3.6),
+      accel: +driver.tune.accel.toFixed(2),
+      latAccel: +driver.tune.latAccel.toFixed(2),
+      armorMax: driver.tune.armorMax,
+      weaponMul: driver.tune.weaponMul,
+    };
+  },
+  get rivalDifficulty() { return opponents.diff.id; },
+  selectCar(i) { return selectCar(i).name; },
+  selectDifficulty(i) { return selectDifficulty(i).id; },
+  startFromGarage() { beginRace(); return { phase, armed: gridArmed }; },
+  showGarage() { openGarage(); return !garageEl.hidden; },
   get resultsRows() {
     return [...resultList.children].map((li) => li.textContent.trim());
   },

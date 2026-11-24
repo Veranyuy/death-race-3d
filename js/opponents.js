@@ -58,6 +58,21 @@ const ROLES = {
   },
 };
 
+/* Difficulty scales the rivals only, on top of their role table, so the
+   archetypes keep their character at every setting: a JUGGERNAUT is still the
+   slow armoured one on DEATH RACE, it just hits sooner and hurts more. PRO is
+   all 1.0, which is the field the roles were tuned against.
+
+   It never touches the player and never reads a car's `tune`: the player's
+   handling comes from js/cars.js, and a rival's pace comes from its role
+   (times this). One knob per actor, so nothing is scaled twice. */
+export const DIFFICULTIES = [
+  { id: 'rookie', name: 'ROOKIE', pace: 0.93, accel: 0.9, aggression: 0.7, aim: -0.1, damage: 0.7, defend: 0.7 },
+  { id: 'pro', name: 'PRO', pace: 1, accel: 1, aggression: 1, aim: 0, damage: 1, defend: 1 },
+  { id: 'deathrace', name: 'DEATH RACE', pace: 1.05, accel: 1.08, aggression: 1.4, aim: 0.12, damage: 1.25, defend: 1.2 },
+];
+export const DEFAULT_DIFFICULTY = 1;
+
 /* The grid, back to front. `along` is metres behind the player's nose — every
    seat is behind it, so nobody gets a free head start down to turn one — and
    `lane` is metres off the centreline. The fast cars sit deepest: they have to
@@ -99,6 +114,8 @@ export class Opponents {
     this.track = null;
     this.time = 0;
     this.cornerAhead = null;
+    // set by the garage: how hard the field is allowed to race
+    this.diff = DIFFICULTIES[DEFAULT_DIFFICULTY];
 
     this.body = new THREE.InstancedMesh(
       BODY_GEO,
@@ -163,6 +180,7 @@ export class Opponents {
       const role = ROLES[seat.role];
       return {
         label: seat.label,
+        def: null,
         role,
         along: seat.along,
         lane: seat.lane,
@@ -174,19 +192,58 @@ export class Opponents {
         y: 0,
         z: 0,
         phase: i * 1.7,
-        fireTimer: role.fire ? role.fire * (0.5 + i * 0.12) : 0,
+        fireTimer: 0,
         jam: 0,        // lock-break cooldown, seconds
         dodgeT: 0,     // seconds left of an evasive line break
         flash: 0,      // hit flash timer, seconds
         oiled: 0,      // seconds of lost grip from a slick
       };
     });
+    this._primeFire();
+  }
+
+  /** Staggered first shot for every armed seat at the current difficulty.
+      The only place the trigger cadence is computed, so the roster, the
+      difficulty and the grid can never prime the same car differently. */
+  _primeFire() {
+    for (let i = 0; i < this.cars.length; i++) {
+      const car = this.cars[i];
+      car.fireTimer = car.role.fire
+        ? (car.role.fire / this.diff.aggression) * (0.5 + i * 0.12)
+        : 0;
+    }
   }
 
   _hideTracers() {
     for (let i = 0; i < BOLT_COUNT; i++) this.tracerMesh.setMatrixAt(i, ZERO);
     this.tracerMesh.instanceMatrix.needsUpdate = true;
     this._tracerDrawn = false;
+  }
+
+  /** Fills the six rival seats from the garage roster: whatever the player did
+      not take. Colour, badge and AI role all come from the manifest entry, so
+      the pack in the mirror is the pack on the board. */
+  setRoster(list) {
+    if (!list || !list.length) return;
+    for (let i = 0; i < this.cars.length; i++) {
+      const def = list[i % list.length];
+      const car = this.cars[i];
+      car.def = def;
+      car.label = def.name;
+      car.role = ROLES[def.role] || ROLES.grinder;
+      this.body.setColorAt(i, _col.setHex(def.paint.body));
+      this.wing.setColorAt(i, _col.setHex(def.paint.accent));
+    }
+    if (this.body.instanceColor) this.body.instanceColor.needsUpdate = true;
+    if (this.wing.instanceColor) this.wing.instanceColor.needsUpdate = true;
+    this._primeFire();
+  }
+
+  /** ROOKIE / PRO / DEATH RACE, applied live: the next corner already uses it. */
+  setDifficulty(diff) {
+    this.diff = diff || DIFFICULTIES[DEFAULT_DIFFICULTY];
+    this._primeFire();
+    return this.diff;
   }
 
   /** How hard the track bends over the next ~40 m, per sample. */
@@ -226,7 +283,7 @@ export class Opponents {
   defendMissile(index) {
     const car = this.cars[index];
     if (!car || !car.role.defend || car.jam > 0) return false;
-    if (Math.random() > car.role.defend) return false;
+    if (Math.random() > car.role.defend * this.diff.defend) return false;
     car.jam = 2.8;
     return true;
   }
@@ -247,8 +304,8 @@ export class Opponents {
       car.oiled = 0;
       car.jam = 0;
       car.dodgeT = 0;
-      car.fireTimer = car.role.fire ? car.role.fire * (0.5 + i * 0.12) : 0;
     }
+    this._primeFire();
     for (const b of this.tracers) b.live = false;
     this._hideTracers();
     this.update(0);
@@ -273,6 +330,7 @@ export class Opponents {
     const pack = this.cars.map((c) => ({ prog: c.s / length, lane: c.lane }));
     pack.push({ prog: playerProg, lane: playerLane });
 
+    const df = this.diff;
     let wi = 0;
     for (let i = 0; i < this.cars.length; i++) {
       const car = this.cars[i];
@@ -287,14 +345,14 @@ export class Opponents {
       /* ---- pace: the corner map sets the ceiling, the role scales it ---- */
       const idx = Math.min(N - 1, Math.floor(u * N));
       let target = THREE.MathUtils.clamp(
-        (TOP_SPEED - this.cornerAhead[idx] * role.corner) * role.pace, 22, 74
+        (TOP_SPEED - this.cornerAhead[idx] * role.corner) * role.pace * df.pace, 22, 74
       );
       // a hunter with its quarry in range settles onto its pace instead of
       // driving away from it: it would rather stay in the fight
       if (role.hunt > 0 && Math.abs(playerGap) < 45 && playerSpeed > 8) {
         target = Math.max(22, Math.min(target, playerSpeed * (1 + 0.05 * role.hunt)));
       }
-      if (car.v < target) car.v = Math.min(target, car.v + role.accel * dt);
+      if (car.v < target) car.v = Math.min(target, car.v + role.accel * df.accel * dt);
       else car.v = Math.max(target, car.v - role.brake * dt);
 
       /* ---- lane keeping: hold a line, step around the car ahead ---- */
@@ -390,7 +448,7 @@ export class Opponents {
       if (car.flash <= 0) continue;
       car.flash = Math.max(0, car.flash - dt);
       const t = Math.min(1, car.flash * 4.2);
-      _col.setHex(RIVAL_COLORS[i % RIVAL_COLORS.length]).lerp(WHITE, t);
+      _col.setHex(car.def ? car.def.paint.body : RIVAL_COLORS[i % RIVAL_COLORS.length]).lerp(WHITE, t);
       this.body.setColorAt(i, _col);
       flashDirty = true;
     }
@@ -410,6 +468,7 @@ export class Opponents {
       is a tracer, which keeps six shooters at one instanced draw call. */
   _stepWeapons(dt, playerProg, playerLane, length) {
     const combat = this.driver.combat;
+    const df = this.diff;
     for (let i = 0; i < this.cars.length; i++) {
       const car = this.cars[i];
       const role = car.role;
@@ -447,8 +506,8 @@ export class Opponents {
       }
       if (victim === -1) continue;
 
-      car.fireTimer = role.fire * (0.8 + Math.random() * 0.45);
-      const hit = Math.random() < role.aim;
+      car.fireTimer = (role.fire / df.aggression) * (0.8 + Math.random() * 0.45);
+      const hit = Math.random() < Math.min(0.95, role.aim + df.aim);
       // a miss still throws a round past the target, so incoming fire is
       // always visible before it starts connecting
       const ax = hit ? tx : tx + (Math.random() - 0.5) * 6;
@@ -476,7 +535,7 @@ export class Opponents {
       if (!hit) continue;
 
       if (victim === -2) {
-        this.driver.armor = Math.max(0, this.driver.armor - role.dmg);
+        this.driver.armor = Math.max(0, this.driver.armor - role.dmg * df.damage);
         combat?.impact(tx, ty, tz, 1.1, 0xffd0a0);
       } else {
         this.hitCar(victim, 0.05);

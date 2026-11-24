@@ -76,6 +76,13 @@ const ROLL_MAX = 0.06;         // ~3.4 deg: reads as weight, never a motorcycle
 const PITCH_GAIN = 0.0008;     // rad of dive/squat per m/s^2
 const PITCH_MAX = 0.026;
 
+/* Garage turntable: a slow orbit round the car on its grid slot. It reuses the
+   one car mesh the race drives, so the showcase costs no extra draw calls. */
+const GARAGE_SPIN = 0.34;      // rad/s
+const GARAGE_RADIUS = 6.9;     // m from the car
+const GARAGE_HEIGHT = 2.4;     // m above the road
+const GARAGE_FOV = 40;
+
 /* AI driving assist look-ahead, in metres: short at low speed so it only
    sees the next corner, long at top speed so there is room to slow for it. */
 const ASSIST_NEAR = 35;        // m of look-ahead at low speed
@@ -257,7 +264,11 @@ function buildCarMesh() {
     }
   });
 
-  car.userData = { wheels, flames, brakeMat, muzzles, shell };
+  car.userData = {
+    wheels, flames, brakeMat, muzzles, shell,
+    // kept so the garage can repaint the body without rebuilding the mesh
+    mats: { bodyMat, accentMat, darkMat, glassMat, headMat, wheelMat, rimMat, brakeMat },
+  };
   return car;
 }
 
@@ -337,6 +348,23 @@ export class DriveTest {
     this.yawVel = 0;          // rad/s the body is actually rotating at
     this.bodyRoll = 0;        // suspension lean, rad
     this.bodyPitch = 0;       // dive / squat, rad
+    // per-car physics. Starts at the reference constants, so a DriveTest that
+    // is never handed a manifest entry still drives the tuned baseline car.
+    this.tune = {
+      maxSpeed: MAX_SPEED,
+      boostSpeed: BOOST_SPEED,
+      accel: ACCEL,
+      boostAccel: BOOST_ACCEL,
+      latAccel: LAT_ACCEL,
+      gripLow: GRIP_LOW,
+      gripHigh: GRIP_HIGH,
+      armorMax: 100,
+      weaponMul: 1,
+    };
+    this.carDef = null;
+    // garage showcase: the camera orbits the parked car instead of chasing it
+    this.garage = false;
+    this.garageAngle = 0.9;
     this.camSnap = true;
     this.mode = 'chase';
     this.modeIndex = 0;
@@ -382,7 +410,7 @@ export class DriveTest {
 
     // analog input written by js/controls.js (touch, tilt, auto-accelerate)
     this.input = { steer: 0, throttle: 0, brake: 0, gun: false, oil: false };
-    this.armor = 100;
+    this.armor = this.tune.armorMax;
     this.flash = 0;
     this.racePos = 1;
     this.fieldSize = 7;
@@ -485,6 +513,36 @@ export class DriveTest {
     });
   }
 
+  /** Adopts one manifest entry (js/cars.js): repaints the body and swaps the
+      handling / armour / weapon numbers in one place, so the car shown in the
+      garage is exactly the car that launches. */
+  applyCar(def) {
+    this.carDef = def;
+    const t = def.tune;
+    this.tune.maxSpeed = MAX_SPEED * t.speed;
+    this.tune.boostSpeed = BOOST_SPEED * t.speed;
+    this.tune.accel = ACCEL * t.accel;
+    this.tune.boostAccel = BOOST_ACCEL * t.accel;
+    this.tune.latAccel = LAT_ACCEL * t.grip;
+    this.tune.gripLow = GRIP_LOW * t.grip;
+    this.tune.gripHigh = GRIP_HIGH * t.grip;
+    this.tune.armorMax = Math.round(100 * t.armor);
+    this.tune.weaponMul = t.weapons;
+    this.armor = this.tune.armorMax;
+
+    const p = def.paint;
+    const m = this.car.userData.mats;
+    m.bodyMat.color.setHex(p.body);
+    m.accentMat.color.setHex(p.accent);
+    m.darkMat.color.setHex(p.dark);
+    m.glassMat.color.setHex(p.glass);
+    m.headMat.emissive.setHex(p.head);
+    m.brakeMat.emissive.setHex(p.brake);
+    m.wheelMat.color.setHex(p.wheel);
+    m.rimMat.color.setHex(p.rim);
+    this.car.name = `player-${def.id}`;
+  }
+
   setTrack(track) {
     this.track = track;
     const size = track.bounds.getSize(new THREE.Vector3());
@@ -503,7 +561,7 @@ export class DriveTest {
     this.finished = false;
     this.finalTime = 0;
     this.finalPosition = 1;
-    this.armor = 100;
+    this.armor = this.tune.armorMax;
     this.flash = 0;
     this.racePos = 1;
     // stand on the line: ~30 m past the gantry so the chase cam clears the banner
@@ -618,7 +676,7 @@ export class DriveTest {
     );
     if (assistOn) steer = THREE.MathUtils.clamp(steer + this._wallSteer, -1, 1);
     const speedAbs = Math.abs(vLong);
-    const sn = Math.min(speedAbs / MAX_SPEED, 1);
+    const sn = Math.min(speedAbs / this.tune.maxSpeed, 1);
     // lock falls away with speed in the same shape as a real rack: most of a
     // turn at a crawl, only a few degrees left at 260 km/h
     const lock = STEER_LOCK_HIGH + (STEER_LOCK_LOW - STEER_LOCK_HIGH) / (1 + sn * STEER_LOCK_FALL);
@@ -634,7 +692,7 @@ export class DriveTest {
     // a power drift is brake + steering at speed: the rear steps out and the
     // nose rotates past where the tyres would otherwise let it
     const drift = brakeInput && speedAbs > 18 && Math.abs(this.steerAngle) > 0.045;
-    const yawCap = (LAT_ACCEL * (drift ? 1.12 : 1)) / Math.max(speedAbs, 8);
+    const yawCap = (this.tune.latAccel * (drift ? 1.12 : 1)) / Math.max(speedAbs, 8);
     // bicycle model: the wheelbase turns a front-wheel angle at road speed into
     // the yaw the car is asking for, and the tyre budget caps it
     const yawAsk = (vLong * Math.tan(this.steerAngle)) / WHEELBASE;
@@ -651,7 +709,7 @@ export class DriveTest {
     vLong = this.velocity.dot(fwd);
     let vLat = this.velocity.dot(right);
 
-    const maxSpeed = boosting ? BOOST_SPEED : MAX_SPEED;
+    const maxSpeed = boosting ? this.tune.boostSpeed : this.tune.maxSpeed;
 
     // the assist feathers the throttle and adds brake rather than replacing
     // the player's own input
@@ -663,13 +721,13 @@ export class DriveTest {
          pulls the car — the whole point of the surge. With GAS held the engine
          is already working, so the bottle leans in a little less and the two
          simply add up instead of the throttle being required to move. */
-      const taper = Math.max(0.12, 1 - Math.max(vLong, 0) / BOOST_SPEED);
-      const thrust = drive > 0.02 ? BOOST_ACCEL * 0.7 : BOOST_ACCEL;
+      const taper = Math.max(0.12, 1 - Math.max(vLong, 0) / this.tune.boostSpeed);
+      const thrust = drive > 0.02 ? this.tune.boostAccel * 0.7 : this.tune.boostAccel;
       vLong += thrust * taper * dt;
     }
     if (drive > 0.02 && vLong < maxSpeed) {
       const taper = Math.max(0.18, 1 - Math.max(vLong, 0) / maxSpeed);
-      vLong += ACCEL * taper * drive * dt;
+      vLong += this.tune.accel * taper * drive * dt;
     }
     if (brakeAmt > 0.02) {
       if (vLong > 0.3) vLong -= BRAKE * brakeAmt * dt;
@@ -689,13 +747,13 @@ export class DriveTest {
     // next second, so the burn ends in a coast rather than a wall.
     const ceiling = boosting
       ? maxSpeed * 1.02
-      : Math.max(maxSpeed * 1.02, Math.min(vLong, BOOST_SPEED));
+      : Math.max(maxSpeed * 1.02, Math.min(vLong, this.tune.boostSpeed));
     vLong = THREE.MathUtils.clamp(vLong, -REVERSE_MAX, ceiling);
 
     // lateral grip: less of it the faster you go, more of it under braking,
     // almost none while the rear tyres are lit up in a drift
     const speedNow = Math.abs(vLong);
-    let grip = GRIP_LOW + (GRIP_HIGH - GRIP_LOW) * sn;
+    let grip = this.tune.gripLow + (this.tune.gripHigh - this.tune.gripLow) * sn;
     if (drift) grip = GRIP_DRIFT;
     else {
       if (brakeInput) grip += GRIP_BRAKE;
@@ -881,7 +939,7 @@ export class DriveTest {
       this.velocity.addScaledVector(fwd, 9);
       this.pushMessage(`${info.label}  +45 NITRO`, info.css);
     } else if (pad.type === 'armor') {
-      this.armor = Math.min(100, this.armor + 35);
+      this.armor = Math.min(this.tune.armorMax, this.armor + 35);
       this.pushMessage(`${info.label}  +35 ARMOR`, info.css);
     } else {
       this.combat?.reloadAll();
@@ -917,7 +975,7 @@ export class DriveTest {
     const N = tr.samples.length;
     const ds = tr.length / N;
     const speed = Math.max(0, this._vLong);
-    const far = ASSIST_NEAR + (ASSIST_FAR - ASSIST_NEAR) * Math.min(speed / MAX_SPEED, 1);
+    const far = ASSIST_NEAR + (ASSIST_FAR - ASSIST_NEAR) * Math.min(speed / this.tune.maxSpeed, 1);
     const curb = ASSIST[mode];
 
     // heading change over an 8-sample (≈26 m) chord = curvature in rad/m.
@@ -1039,7 +1097,42 @@ export class DriveTest {
 
   /* ----------------------------------------------------------------- camera */
 
+  /** Garage showcase shot: a slow orbit round the parked car. It deliberately
+      swings out over the barrier, so it skips the road/wall clamps the driving
+      rigs use, and it drives the same mesh the race does — no second car, no
+      extra draw call. */
+  updateGarageCamera(dt) {
+    const cam = this.camera;
+    if (this._camMode !== 'garage') {
+      this._camMode = 'garage';
+      cam.near = 0.5;
+      cam.far = 12000;
+      // the sheet always opens on a snap, so the lens can go straight to the
+      // showcase fov instead of easing into it over the first second
+      cam.fov = GARAGE_FOV;
+      this.cockpitRig.visible = false;
+      cam.updateProjectionMatrix();
+    }
+    this.garageAngle += dt * GARAGE_SPIN;
+    const a = this.garageAngle;
+    const p = this.position;
+    _camPos.set(
+      p.x + Math.sin(a) * GARAGE_RADIUS,
+      p.y + GARAGE_HEIGHT,
+      p.z + Math.cos(a) * GARAGE_RADIUS
+    );
+    // aim just under the roof line: the car sits high in the frame, clear of
+    // the garage card along the bottom edge
+    _camLook.set(p.x, p.y + 0.55, p.z);
+    const k = this.camSnap ? 1 : 1 - Math.exp(-7 * dt);
+    cam.position.lerp(_camPos, k);
+    _quat.setFromRotationMatrix(_basis.lookAt(cam.position, _camLook, UP));
+    cam.quaternion.slerp(_quat, k);
+    this.camSnap = false;
+  }
+
   updateCamera(dt) {
+    if (this.garage) { this.updateGarageCamera(dt); return; }
     const cam = this.camera;
     const mode = this.mode;
     const clip = CAM_CLIP[mode] || CAM_CLIP.chase;
@@ -1057,7 +1150,7 @@ export class DriveTest {
     const up = this.sampleUp.lengthSq() > 0.5 ? this.sampleUp : UP;
     const fwd = _camFwd.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
     const speed = Math.abs(this._vLong);
-    const sn = Math.min(speed / MAX_SPEED, 1);
+    const sn = Math.min(speed / this.tune.maxSpeed, 1);
 
     // smoothed climb rate of the car, used by the chase feed-forward
     const sampleDt = Math.max(dt, 1e-4);
