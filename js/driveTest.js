@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.module.js';
 import { PAD_TYPES } from './tracks.js';
-import { loadModel, instantiate } from './modelLoader.js';
+import { loadModel, instantiate, mountWeapon, PLAYER_TRIS } from './modelLoader.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const OVERVIEW_UP = new THREE.Vector3(0, 0, -1);
@@ -16,6 +16,8 @@ const _quat = new THREE.Quaternion();
 const _camPos = new THREE.Vector3();
 const _camLook = new THREE.Vector3();
 const _camFwd = new THREE.Vector3();
+const _qSteer = new THREE.Quaternion();
+const _qSpin = new THREE.Quaternion();
 const _camUp = new THREE.Vector3();
 
 /** Driving cameras, in cycle order. `overview` stays last so C never lands on
@@ -372,6 +374,8 @@ export class DriveTest {
     // the player has already moved on from.
     this.model = null;
     this.modelWheels = [];
+    // the roster's hardpoint gun, once it has been measured onto the body
+    this.weapon = null;
     this._modelToken = 0;
     // garage showcase: the camera orbits the parked car instead of chasing it
     this.garage = false;
@@ -566,24 +570,26 @@ export class DriveTest {
       for (const w of wheels) w.pivot.visible = on;
     };
     if (this.model) shell.remove(this.model);
+    if (this.weapon) shell.remove(this.weapon);
     this.model = null;
+    this.weapon = null;
     this.modelWheels = [];
     this.car.userData.modelState = def.model ? 'loading' : 'box';
     this.car.userData.modelTris = 0;
 
-    if (!def.model) { procedural(true); return; }
+    if (!def.model) { procedural(true); this._mountWeapon(def, token); return; }
     console.info(`[model] ${def.name}: loading ${def.model}`);
-    loadModel(def.model).then((entry) => {
+    loadModel(def.model, !!def.modelFlip, PLAYER_TRIS).then((entry) => {
       if (token !== this._modelToken) return;
       const mount = instantiate(entry);
-      if (def.modelFlip) mount.group.rotation.y = Math.PI;
       shell.add(mount.group);
       this.model = mount.group;
       this.modelWheels = mount.wheels;
       this.car.userData.modelState = 'ready';
       this.car.userData.modelTris = entry.tris;
       procedural(false);
-      console.info(`[model] ${def.name}: ${entry.tris.toLocaleString()} tris, ${mount.wheels.length} wheel nodes — box chassis hidden`);
+      console.info(`[model] ${def.name}: ${entry.tris.toLocaleString()} tris, ${mount.wheels.length} wheel corners — box chassis hidden`);
+      this._mountWeapon(def, token);
     }).catch((err) => {
       if (token !== this._modelToken) return;
       /* The old body was already taken off the shell above, so the box
@@ -593,6 +599,24 @@ export class DriveTest {
       this.car.userData.modelState = 'failed';
       console.error(`[model] ${def.name}: FAILED ${def.model} — box chassis in use.`, err);
       this.messages.push({ text: `${def.name} MODEL FAILED · BOX BODY`, color: '#ff4a32' });
+      this._mountWeapon(def, token);
+    });
+  }
+
+  /** Bolts the roster's hardpoint gun onto whatever body is actually on the
+      car. It is seated on the bodywork above its hardpoint, so a model and the
+      procedural chassis both get a mount that touches the shell; the token
+      keeps a slow weapon download from landing on a car the player has already
+      switched away from. */
+  _mountWeapon(def, token) {
+    const shell = this.car.userData.shell;
+    mountWeapon(shell, def).then((group) => {
+      if (!group) return;
+      if (token !== this._modelToken) {
+        group.parent?.remove(group);
+        return;
+      }
+      this.weapon = group;
     });
   }
 
@@ -886,11 +910,26 @@ export class DriveTest {
       w.wheel.rotation.x = this.wheelSpin;
       if (w.front) w.pivot.rotation.y = this.steerAngle;
     }
-    // a real model's own wheels: front pair steers, all four roll. Models with
-    // baked-in wheels simply have an empty list and rely on the chassis lean
+    /* A real model's own wheels: all four roll about the car's lateral axis,
+       the front pair also steers about its up axis, and each corner spins about
+       its own axle pivot (js/modelLoader.js), so a model authored Z-up or with
+       its tyres saved at an angle still rolls the way the car is pointing. A
+       corner can be several pivots — an export that names the tyre and the rim
+       separately — so every part gets the same pair of angles. The angle is the
+       road distance over that tyre's own radius: a model tyre is rarely the box
+       chassis' 0.46 m, and the box chassis' accumulator is signed for its own
+       x axis. */
     for (const w of this.modelWheels) {
-      w.node.rotation.x = w.base.x + this.wheelSpin;
-      if (w.front) w.node.rotation.y = w.base.y + this.steerAngle;
+      const roll = (-0.46 * this.wheelSpin) / (w.radius || 0.46);
+      for (const part of w.parts) {
+        _qSpin.setFromAxisAngle(part.spin, roll);
+        if (w.front) {
+          _qSteer.setFromAxisAngle(part.up, this.steerAngle);
+          part.node.quaternion.copy(_qSteer).multiply(_qSpin).multiply(part.base);
+        } else {
+          part.node.quaternion.copy(_qSpin).multiply(part.base);
+        }
+      }
     }
     const flameOn = boosting && vLong > 2;
     for (const f of car.userData.flames) {

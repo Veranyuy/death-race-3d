@@ -7,7 +7,7 @@
    never show one set of numbers and drive another.
 
    `tune` values are multipliers on the hand-tuned constants in
-   js/driveTest.js (MAX_SPEED, ACCEL, LAT_ACCEL, GRIP_*). The GRINDER is all
+   js/driveTest.js (MAX_SPEED, ACCEL, LAT_ACCEL, GRIP_*). The VECTOR is all
    1.00 on purpose: it is the reference car the physics baseline was recorded
    with, so its handling is exactly what the harness measures.
 
@@ -19,7 +19,27 @@
    page) and js/modelLoader.js mounts it, measuring and normalising it to the
    same footprint the procedural chassis uses. Leave it null and the box
    chassis is used instead, so a missing or broken file still races.
-   `modelFlip` turns a model that was exported nose-away by 180 degrees.
+
+   `modelFlip` turns the body a half turn about its up axis. The loader can
+   measure where the long axis is, but not which end of it is the nose, so a
+   model exported tail-first is marked here instead of being re-exported. The
+   turn is baked into the shared template, so the player's car, every rival
+   body and the hardpoint gun (which is placed in car space) all agree on
+   which way forward is.
+
+   `weapon` is the gun bolted to that body: a .glb in assets/models/weapons,
+   its length in metres (the file is normalised to one unit, so this is the
+   whole scale) and the hardpoint it sits on in car space — `z` is metres
+   forward of the body centre, `x` metres sideways. The loader measures the
+   roof under that point and seats the gun on it, so a low prototype and a
+   coupe both get a mount that touches the body instead of floating over it.
+
+   HARD RULES: a vehicle .glb is 3 MB or smaller, a weapon .glb 1 MB or
+   smaller. js/modelLoader.js checks each download before decoding anything
+   and rejects a larger file, which leaves that seat on its procedural body (or
+   that hardpoint empty) — so a heavy export cannot be added here by accident.
+   Reduce the art (lighter export, Draco/meshopt, fewer textures) until it is
+   under the limit, then point `model` / `weapon.model` at it.
    ========================================================================= */
 
 /** What each archetype is called on the badge. */
@@ -50,11 +70,13 @@ function bars(tune) {
 
 const RAW = [
   {
-    id: 'grinder',
-    name: 'GRINDER',
+    id: 'vector',
+    name: 'VECTOR',
     role: 'grinder',
-    blurb: 'Factory all-rounder. No weakness, no gift.',
-    model: 'assets/models/cars/typhoon-53949_mrap.glb',
+    blurb: 'Track prototype. No weakness, no gift.',
+    model: 'assets/models/cars/vector.glb',
+    modelFlip: true,
+    weapon: { model: 'assets/models/weapons/machine_gun.glb', length: 1.05, z: -0.5, reach: 0.55 },
     tune: { speed: 1, accel: 1, grip: 1, armor: 1, weapons: 1 },
     paint: {
       body: 0x5d7689, accent: 0xe04a22, dark: 0x1b2126, glass: 0x1b2c36,
@@ -62,77 +84,57 @@ const RAW = [
     },
   },
   {
-    id: 'razorback',
-    name: 'RAZORBACK',
-    role: 'grinder',
-    blurb: 'Lighter chassis, quicker nose. Plate traded for turn-in.',
-    model: 'assets/models/cars/lenco_bearcat_valkyriewakamos_swat_van.glb',
-    tune: { speed: 0.99, accel: 1.04, grip: 1.07, armor: 0.92, weapons: 0.95 },
-    paint: {
-      body: 0x2f9d55, accent: 0xe8f0b0, dark: 0x18211b, glass: 0x1b2c36,
-      wheel: 0x202427, rim: 0xb7c4b6, head: 0xd8ffe4, brake: 0xff2a0a,
-    },
-  },
-  {
-    id: 'k9',
-    name: 'K9',
+    id: 'redline',
+    name: 'REDLINE',
     role: 'sprinter',
-    blurb: 'Stripped sprinter. Fastest on the straight, thinnest plate.',
-    model: 'assets/models/cars/widowmaker_-_death_race_2000.glb',
-    tune: { speed: 1.07, accel: 1.1, grip: 0.97, armor: 0.78, weapons: 0.9 },
+    blurb: 'Stripped street sprinter. Fastest on the straight, thinnest plate.',
+    model: 'assets/models/cars/redline.glb',
+    weapon: { model: 'assets/models/weapons/utcm_blaster.glb', length: 1.25, z: -0.25, reach: 0.5 },
+    tune: { speed: 1.07, accel: 1.1, grip: 0.98, armor: 0.8, weapons: 0.95 },
     paint: {
       body: 0xd2401f, accent: 0xffb347, dark: 0x241412, glass: 0x1b2c36,
       wheel: 0x202427, rim: 0xe0c9a8, head: 0xfff0d0, brake: 0xff2a0a,
     },
   },
   {
-    id: 'franken',
-    name: 'FRANKEN',
+    id: 'sabre',
+    name: 'SABRE',
     role: 'predator',
     blurb: 'Runs at the front and shoots on the move. Breaks locks.',
-    model: 'assets/models/cars/ford_mustang_gt_05_frankenstein_death_race.glb',
-    tune: { speed: 1.03, accel: 1.05, grip: 1.02, armor: 0.95, weapons: 1.25 },
+    model: 'assets/models/cars/sabre.glb',
+    weapon: { model: 'assets/models/weapons/automatic_machine_gun.glb', length: 0.95, z: 0.1, reach: 0.5 },
+    tune: { speed: 1.04, accel: 1.06, grip: 1.05, armor: 0.9, weapons: 1.2 },
     paint: {
       body: 0x2f6fb4, accent: 0x63f4ff, dark: 0x121a24, glass: 0x1b2c36,
       wheel: 0x202427, rim: 0xc2ccd2, head: 0xbfe9ff, brake: 0xff2a0a,
     },
   },
   {
-    id: 'spectre',
-    name: 'SPECTRE',
-    role: 'predator',
-    blurb: 'Fast attack build. Hits hard behind a thin shell.',
-    model: 'assets/models/cars/sandstinger_-_death_race_2000.glb',
-    modelFlip: true,   // this export points its tail down +z
-    tune: { speed: 1.02, accel: 1.02, grip: 1, armor: 0.86, weapons: 1.18 },
-    paint: {
-      body: 0xd9dde0, accent: 0xff8a24, dark: 0x1a1e22, glass: 0x1b2c36,
-      wheel: 0x1a1d20, rim: 0x9aa6ae, head: 0xdfefff, brake: 0xff2a0a,
-    },
-  },
-  {
-    id: 'juggernaut',
-    name: 'JUGGERNAUT',
+    id: 'hammer',
+    name: 'HAMMER',
     role: 'heavy',
-    blurb: 'Rolling bunker. Slow to arrive, very hard to stop.',
-    model: 'assets/models/cars/armored_car_death_race.glb',
-    modelFlip: true,   // this export points its tail down +z
-    tune: { speed: 0.93, accel: 0.95, grip: 1.05, armor: 1.3, weapons: 1.05 },
-    paint: {
-      body: 0xd8b12a, accent: 0xf5f0dc, dark: 0x241f14, glass: 0x1b2c36,
-      wheel: 0x202427, rim: 0xc8b27a, head: 0xfff4c8, brake: 0xff2a0a,
-    },
-  },
-  {
-    id: 'warlord',
-    name: 'WARLORD',
-    role: 'heavy',
-    blurb: 'Armoured hunter. Prices pace for cannon and plate.',
-    model: 'assets/models/cars/typhoon-vdv_30mm__russian_vdv_warno_mod.glb',
-    tune: { speed: 0.95, accel: 0.96, grip: 1.09, armor: 1.22, weapons: 1.15 },
+    blurb: 'Muscle chassis, big cannon. Prices pace for plate.',
+    model: 'assets/models/cars/hammer.glb',
+    weapon: { model: 'assets/models/weapons/car_combat_machine_gun.glb', length: 1.1, z: 0.05, reach: 0.5 },
+    tune: { speed: 0.95, accel: 0.97, grip: 1, armor: 1.18, weapons: 1.1 },
     paint: {
       body: 0x8b5cc0, accent: 0xff8a24, dark: 0x1d1726, glass: 0x1b2c36,
       wheel: 0x202427, rim: 0xb9aecd, head: 0xe6d8ff, brake: 0xff2a0a,
+    },
+  },
+  {
+    id: 'enforcer',
+    name: 'ENFORCER',
+    role: 'heavy',
+    blurb: 'Interceptor with a roof turret. Slow to arrive, hard to stop.',
+    model: 'assets/models/cars/enforcer.glb',
+    // the hardpoint sits behind the lightbar, not on it: the bar is the highest
+    // thing on this roof and a turret perched on it reads as broken
+    weapon: { model: 'assets/models/weapons/gatling_gun.glb', length: 1, z: -0.95, reach: 0.3 },
+    tune: { speed: 0.98, accel: 1, grip: 1.03, armor: 1.24, weapons: 1.12 },
+    paint: {
+      body: 0x2f9d55, accent: 0xe8f0b0, dark: 0x18211b, glass: 0x1b2c36,
+      wheel: 0x202427, rim: 0xb7c4b6, head: 0xd8ffe4, brake: 0xff2a0a,
     },
   },
 ];

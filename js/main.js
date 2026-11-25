@@ -7,6 +7,7 @@ import { CARS, DEFAULT_CAR } from './cars.js';
 import { Combat } from './combat.js';
 import { QualityGovernor, QUALITY } from './quality.js';
 import { createAudio } from './audio.js';
+import { setMaxAnisotropy } from './modelLoader.js';
 
 /* --------------------------------------------------------------- renderer */
 
@@ -26,10 +27,17 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 // frame. Anything that moves a light or changes what casts must ask for it.
 renderer.shadowMap.autoUpdate = false;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-// a touch above neutral: lifts tarmac, bodywork and facades out of the murk
-// while ACES still rolls the sky highlights off instead of clipping them
-renderer.toneMappingExposure = 1.16;
+// the environment probe below now supplies the fill that extra exposure used
+// to fake, so this sits near neutral while ACES still rolls the sky highlights
+// off instead of clipping them
+renderer.toneMappingExposure = 1.1;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+// every texture in the scene is read at a grazing angle for most of a lap, so
+// anisotropic filtering runs at the GPU's limit. Capped at 8: past that the
+// cost stops buying anything a phone can show.
+const maxAniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+setMaxAnisotropy(maxAniso);
+const TEXTURE_SLOTS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'alphaMap'];
 
 const scene = new THREE.Scene();
 // cool industrial haze; per-circuit values re-applied in applyTrack
@@ -75,8 +83,11 @@ const sky = new THREE.Mesh(
       varying vec3 vDir;
       void main() {
         vec3 d = normalize(vDir);
-        float t = pow(clamp(d.y * 1.45, 0.0, 1.0), 0.55);
+        float t = pow(clamp(d.y * 1.35, 0.0, 1.0), 0.48);
         vec3 col = mix(uHorizon, uTop, t);
+        // deepen the zenith: a sky that is one flat value all the way up is
+        // what makes the horizon read as a wall instead of a distance
+        col = mix(col, uTop * 0.78, smoothstep(0.2, 0.95, d.y) * 0.5);
 
         // overcast cloud deck: broad soft banding, fading out at the horizon
         vec2 cp = d.xz / (abs(d.y) + 0.22);
@@ -93,8 +104,8 @@ const sky = new THREE.Mesh(
         col = mix(col, uHorizon * 1.14 + vec3(0.01), shelf * 0.85);
 
         float sun = max(dot(d, normalize(uSunDir)), 0.0);
-        col += uSunColor * pow(sun, 380.0) * 2.6;
-        col += uSunColor * pow(sun, 9.0) * 0.1;
+        col += uSunColor * pow(sun, 380.0) * 2.8;
+        col += uSunColor * pow(sun, 9.0) * 0.16;
         col = mix(col, uHorizon * 0.72, smoothstep(0.0, -0.4, d.y));
         gl_FragColor = vec4(col, 1.0);
       }
@@ -104,6 +115,94 @@ const sky = new THREE.Mesh(
 sky.frustumCulled = false;
 sky.renderOrder = -1;
 scene.add(sky);
+
+/* ------------------------------------------------------- environment map */
+
+/* The scene ships no HDR file, so its reflection probe is painted: a 512x256
+   equirect built from the circuit's own zenith and horizon colours, a sun disc
+   where the sun actually is, and two very soft window strips. PMREM filters it
+   once per circuit change, and `scene.environment` then gives every standard
+   material something to reflect — which is the difference between bodywork that
+   catches light and bodywork that reads as flat colour. Cost: one canvas and
+   one GPU pass per circuit, no download. */
+const pmrem = new THREE.PMREMGenerator(renderer);
+pmrem.compileEquirectangularShader();
+let envTarget = null;
+
+const _envA = new THREE.Color();
+const _envB = new THREE.Color();
+
+function paintEnvironment(theme) {
+  const w = 512;
+  const h = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  const css = (c) => c.getStyle();
+  const top = new THREE.Color(theme.skyTop);
+  const horizon = new THREE.Color(theme.skyHorizon);
+  const ground = new THREE.Color(theme.groundColor);
+
+  // canvas y = 0 is the zenith in an equirect read by three's env shader
+  const sky = ctx.createLinearGradient(0, 0, 0, h);
+  sky.addColorStop(0, css(top));
+  sky.addColorStop(0.3, css(_envA.copy(top).lerp(horizon, 0.6)));
+  sky.addColorStop(0.46, css(_envB.copy(horizon).multiplyScalar(1.2)));
+  sky.addColorStop(0.5, css(horizon));
+  sky.addColorStop(0.55, css(_envA.copy(horizon).lerp(ground, 0.6)));
+  sky.addColorStop(0.75, css(_envB.copy(ground).multiplyScalar(0.72)));
+  sky.addColorStop(1, css(_envA.copy(ground).multiplyScalar(0.42)));
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, w, h);
+
+  // sun: a hard core for the specular hit, a wide halo for the sheen
+  const dir = new THREE.Vector3(...theme.sunDir).normalize();
+  const su = (Math.atan2(dir.z, dir.x) / (Math.PI * 2) + 0.5) * w;
+  const sv = (0.5 - Math.asin(THREE.MathUtils.clamp(dir.y, -1, 1)) / Math.PI) * h;
+  const sunCol = new THREE.Color(theme.sun);
+  const halo = ctx.createRadialGradient(su, sv, 0, su, sv, h * 0.42);
+  halo.addColorStop(0, 'rgba(255,255,255,0.5)');
+  halo.addColorStop(0.18, css(_envA.copy(sunCol).multiplyScalar(0.5)));
+  halo.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = halo;
+  ctx.fillRect(0, 0, w, h);
+  const core = ctx.createRadialGradient(su, sv, 0, su, sv, h * 0.07);
+  core.addColorStop(0, '#ffffff');
+  core.addColorStop(0.55, css(sunCol));
+  core.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = core;
+  ctx.fillRect(su - h * 0.08, sv - h * 0.08, h * 0.16, h * 0.16);
+
+  /* Two soft vertical strips on the sun side. They read as the long, straight
+     highlights a studio softbox leaves down a bonnet — the thing that says
+     "polished" rather than "painted cardboard". */
+  for (const offset of [-0.12, 0.09]) {
+    const x = ((su / w + offset + 1) % 1) * w;
+    const strip = ctx.createLinearGradient(x - w * 0.035, 0, x + w * 0.035, 0);
+    strip.addColorStop(0, 'rgba(255,255,255,0)');
+    strip.addColorStop(0.5, 'rgba(255,255,255,0.13)');
+    strip.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = strip;
+    ctx.fillRect(x - w * 0.035, h * 0.18, w * 0.07, h * 0.34);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.mapping = THREE.EquirectangularReflectionMapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+/** Rebuilds the probe for a circuit and hands it to the scene. The previous
+    render target is disposed, so switching circuits cannot leak one per change. */
+function applyEnvironment(theme) {
+  const texture = paintEnvironment(theme);
+  const next = pmrem.fromEquirectangular(texture);
+  texture.dispose();
+  if (envTarget) envTarget.dispose();
+  envTarget = next;
+  scene.environment = next.texture;
+}
 
 /* ---------------------------------------------------------------- lights */
 
@@ -124,6 +223,14 @@ scene.add(sun);
 scene.add(sun.target);
 
 const sunDir = new THREE.Vector3(-0.35, 0.78, 0.5).normalize();
+
+/* A soft counter-key from the shaded side. The hemisphere alone flattens a car
+   into one average value; this gives the unlit flank a direction, so the
+   silhouette and the shoulder line still read. No shadows, one extra light. */
+const fill = new THREE.DirectionalLight(0xaec8dc, 0.55);
+fill.castShadow = false;
+scene.add(fill);
+scene.add(fill.target);
 
 /* --------------------------------------------------------------- driver */
 
@@ -283,6 +390,22 @@ function applyTrack(index) {
   track.skyline.visible = QUALITY[qualityTier].skyline !== false;
   gradeMode = null;
 
+  /* The circuit's own textures get the same treatment as the cars: the GPU's
+     anisotropy limit (a road is read at a grazing angle for the whole lap) and
+     a restrained share of the probe, so rails, water and concrete catch a
+     horizon highlight without turning into mirrors. */
+  track.group.traverse((o) => {
+    const m = o.material;
+    if (!m) return;
+    if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.45;
+    for (const key of TEXTURE_SLOTS) {
+      const t = m[key];
+      if (!t || t.anisotropy === maxAniso) continue;
+      t.anisotropy = maxAniso;
+      t.needsUpdate = true;
+    }
+  });
+
   track.bounds.getCenter(trackCenter);
   const size = track.bounds.getSize(new THREE.Vector3());
   trackRadius = Math.max(size.x, size.z) * 0.5;
@@ -305,6 +428,7 @@ function applyTrack(index) {
   hemi.intensity = def.theme.hemiIntensity;
   sun.color.set(def.theme.sun);
   sun.intensity = def.theme.sunIntensity;
+  applyEnvironment(def.theme);
 
   driver.setTrack(track);
   opponents.setTrack(track);
@@ -704,7 +828,7 @@ function syncGarage() {
   garageStartSub.textContent = `${def.name} \u00b7 ${DIFFICULTIES[selectedDiff].name}`;
 }
 
-/** Builds the picking controls once: seven dots, three circuits, three modes. */
+/** Builds the picking controls once: one dot per car, three circuits, three modes. */
 function buildGarage() {
   for (let i = 0; i < CARS.length; i++) {
     const dot = document.createElement('i');
@@ -955,6 +1079,11 @@ function updateSunShadow() {
   sun.position.copy(target).add(sunOffset);
   sun.target.position.copy(target);
   sun.target.updateMatrixWorld();
+  // the fill rides opposite the key, a little above it
+  fill.position.copy(target).addScaledVector(sunDir, -300);
+  fill.position.y += 220;
+  fill.target.position.copy(target);
+  fill.target.updateMatrixWorld();
   const cam = sun.shadow.camera;
   cam.left = -half;
   cam.right = half;

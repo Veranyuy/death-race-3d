@@ -278,7 +278,8 @@ function canvasTexture(w, h, draw) {
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  // grazing angles are the normal viewing angle here, not the exception
+  tex.anisotropy = 8;
   return tex;
 }
 
@@ -297,16 +298,46 @@ function makeTextures(theme, seed) {
   const rand = mulberry32(seed);
   const out = {};
 
-  out.road = canvasTexture(256, 512, (ctx, w, h) => {
-    noiseFill(ctx, w, h, rand, '#a8a8a8', 120, 14000);
-    ctx.strokeStyle = 'rgba(38,38,38,0.32)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 22; i++) {
+  /* The road is read at a grazing angle for the whole lap, so it is authored at
+     the resolution that angle needs: 512 across the carriageway, one tile every
+     12 m, and a grain fine enough to hold up six metres behind the rear wing.
+     The old 256x512 map stretched across the full width was the mud. */
+  out.road = canvasTexture(512, 1024, (ctx, w, h) => {
+    noiseFill(ctx, w, h, rand, '#a6a6a6', 132, 26000);
+    // polished wheel tracks: two darker bands where the tyres run
+    for (const cx of [w * 0.26, w * 0.74]) {
+      const band = ctx.createLinearGradient(cx - w * 0.1, 0, cx + w * 0.1, 0);
+      band.addColorStop(0, 'rgba(26,26,28,0)');
+      band.addColorStop(0.5, 'rgba(26,26,28,0.15)');
+      band.addColorStop(1, 'rgba(26,26,28,0)');
+      ctx.fillStyle = band;
+      ctx.fillRect(cx - w * 0.1, 0, w * 0.2, h);
+    }
+    // patch repairs and oil: soft blooms, never a hard edge
+    for (let i = 0; i < 70; i++) {
+      const x = rand() * w, y = rand() * h, r = 10 + rand() * 52;
+      const blob = ctx.createRadialGradient(x, y, 0, x, y, r);
+      blob.addColorStop(0, `rgba(24,24,26,${0.05 + rand() * 0.08})`);
+      blob.addColorStop(1, 'rgba(24,24,26,0)');
+      ctx.fillStyle = blob;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // aggregate glint: the specks that stop tarmac reading as grey mud
+    for (let i = 0; i < 2200; i++) {
+      ctx.fillStyle = `rgba(214,214,210,${0.05 + rand() * 0.16})`;
+      ctx.fillRect(rand() * w, rand() * h, 1 + rand() * 1.5, 1 + rand() * 1.5);
+    }
+    // tar seams
+    ctx.strokeStyle = 'rgba(34,34,36,0.34)';
+    for (let i = 0; i < 26; i++) {
+      ctx.lineWidth = 1 + rand() * 2.2;
       ctx.beginPath();
       let x = rand() * w, y = rand() * h;
       ctx.moveTo(x, y);
       for (let k = 0; k < 4; k++) {
-        x += (rand() - 0.5) * 30; y += rand() * 34;
+        x += (rand() - 0.5) * 26; y += rand() * 40;
         ctx.lineTo(x, y);
       }
       ctx.stroke();
@@ -329,6 +360,30 @@ function makeTextures(theme, seed) {
       }
     }
   });
+
+  /* Roughness variation for the road, in its own small map: the wheel tracks
+     are polished and the patch repairs are dry, and that difference is what a
+     reflection needs to read as a real surface instead of one flat grey. */
+  out.roadRough = canvasTexture(256, 512, (ctx, w, h) => {
+    ctx.fillStyle = '#9a9a9a';
+    ctx.fillRect(0, 0, w, h);
+    for (let i = 0; i < 700; i++) {
+      const v = 110 + Math.floor(rand() * 100);
+      ctx.fillStyle = `rgba(${v},${v},${v},${0.16 + rand() * 0.26})`;
+      const s = 2 + rand() * 24;
+      ctx.fillRect(rand() * w, rand() * h, s, s);
+    }
+    for (const cx of [w * 0.26, w * 0.74]) {
+      const band = ctx.createLinearGradient(cx - w * 0.1, 0, cx + w * 0.1, 0);
+      band.addColorStop(0, 'rgba(70,70,70,0)');
+      band.addColorStop(0.5, 'rgba(70,70,70,0.7)');
+      band.addColorStop(1, 'rgba(70,70,70,0)');
+      ctx.fillStyle = band;
+      ctx.fillRect(cx - w * 0.1, 0, w * 0.2, h);
+    }
+  });
+  // a roughness map is data, not colour: sRGB decoding would bend the values
+  out.roadRough.colorSpace = THREE.NoColorSpace;
 
   out.ground = canvasTexture(256, 256, (ctx, w, h) => {
     if (theme.groundTex === 'basalt') {
@@ -764,7 +819,9 @@ export function createTrack(index) {
         s.pos.y + 0.0,
         s.pos.z + s.right.z * off
       );
-      rb.uvs.push(j / (COLS - 1), s.dist / 15);
+      // one tile every 12 m of travel: at the chase cam's height that is the
+      // shortest repeat that does not read as a pattern
+      rb.uvs.push(j / (COLS - 1), s.dist / 12);
       const af = Math.abs(f);
       let shade = 0.84 + roadRand() * 0.22;
       if (af > 0.85) shade *= 0.72;
@@ -780,7 +837,8 @@ export function createTrack(index) {
     }
   }
   const road = finish(rb, new THREE.MeshStandardMaterial({
-    map: tex.road, vertexColors: true, roughness: 0.94, metalness: 0.03,
+    map: tex.road, roughnessMap: tex.roadRough, vertexColors: true,
+    roughness: 0.92, metalness: 0.04, envMapIntensity: 0.55,
   }), { cast: false, receive: true });
   group.add(road);
 

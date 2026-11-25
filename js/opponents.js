@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.js';
-import { rivalBatches } from './modelLoader.js';
+import { rivalBatches, mountWeapon } from './modelLoader.js';
 
 /* =========================================================================
    DEATH RACE 3D — AI rivals
@@ -269,7 +269,9 @@ export class Opponents {
     if (!def.model) return;
     this.modelState[index] = 'loading';
     console.info(`[rivals] ${def.name}: loading ${def.model}`);
-    rivalBatches(def.model).then((batches) => {
+    // the half turn lives in the template, so the body and the gun mounted on
+    // it face the same way without this seat having to remember a flip
+    rivalBatches(def.model, !!def.modelFlip).then((batches) => {
       if (token !== this._modelTokens[index]) return;
       // nothing mergeable would otherwise leave the seat reporting 'loading'
       if (!batches || !batches.length) throw new Error('no mergeable geometry');
@@ -286,9 +288,11 @@ export class Opponents {
         mesh.frustumCulled = false;
         group.add(mesh);
       }
-      group.userData.flip = def.modelFlip ? Math.PI : 0;
       this.scene.add(group);
       this.modelMeshes[index] = group;
+      // the same hardpoint gun the player's body carries, measured onto this
+      // body's own roof so the pack in the mirror is armed like the board
+      mountWeapon(group, def);
       this._blankInstances(index);
       console.info(`[rivals] ${def.name}: ${batches.length} material batches — box body hidden`);
     }).catch((err) => {
@@ -493,7 +497,7 @@ export class Opponents {
       const model = this.modelMeshes[i];
       if (model) {
         model.position.set(car.x, car.y, car.z);
-        model.rotation.y = car.yaw + model.userData.flip;
+        model.rotation.y = car.yaw;
       } else {
         _dummy.position.set(car.x, car.y, car.z);
         _dummy.rotation.set(0, car.yaw, 0);
