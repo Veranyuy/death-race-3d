@@ -15,9 +15,11 @@
    from its `role` table in js/opponents.js scaled by the difficulty, so no
    car is ever scaled by both a garage stat and a difficulty multiplier.
 
-   `model` is the plug-in point for custom art. Leave it null to use the
-   procedural body; point it at a .glb and the loader swaps the shell without
-   touching anything else in here.
+   `model` is the plug-in point for custom art: a .glb path (relative to the
+   page) and js/modelLoader.js mounts it, measuring and normalising it to the
+   same footprint the procedural chassis uses. Leave it null and the box
+   chassis is used instead, so a missing or broken file still races.
+   `modelFlip` turns a model that was exported nose-away by 180 degrees.
    ========================================================================= */
 
 /** What each archetype is called on the badge. */
@@ -52,7 +54,7 @@ const RAW = [
     name: 'GRINDER',
     role: 'grinder',
     blurb: 'Factory all-rounder. No weakness, no gift.',
-    model: null,
+    model: 'assets/models/cars/typhoon-53949_mrap.glb',
     tune: { speed: 1, accel: 1, grip: 1, armor: 1, weapons: 1 },
     paint: {
       body: 0x5d7689, accent: 0xe04a22, dark: 0x1b2126, glass: 0x1b2c36,
@@ -64,7 +66,7 @@ const RAW = [
     name: 'RAZORBACK',
     role: 'grinder',
     blurb: 'Lighter chassis, quicker nose. Plate traded for turn-in.',
-    model: null,
+    model: 'assets/models/cars/lenco_bearcat_valkyriewakamos_swat_van.glb',
     tune: { speed: 0.99, accel: 1.04, grip: 1.07, armor: 0.92, weapons: 0.95 },
     paint: {
       body: 0x2f9d55, accent: 0xe8f0b0, dark: 0x18211b, glass: 0x1b2c36,
@@ -76,7 +78,7 @@ const RAW = [
     name: 'K9',
     role: 'sprinter',
     blurb: 'Stripped sprinter. Fastest on the straight, thinnest plate.',
-    model: null,
+    model: 'assets/models/cars/widowmaker_-_death_race_2000.glb',
     tune: { speed: 1.07, accel: 1.1, grip: 0.97, armor: 0.78, weapons: 0.9 },
     paint: {
       body: 0xd2401f, accent: 0xffb347, dark: 0x241412, glass: 0x1b2c36,
@@ -88,7 +90,7 @@ const RAW = [
     name: 'FRANKEN',
     role: 'predator',
     blurb: 'Runs at the front and shoots on the move. Breaks locks.',
-    model: null,
+    model: 'assets/models/cars/ford_mustang_gt_05_frankenstein_death_race.glb',
     tune: { speed: 1.03, accel: 1.05, grip: 1.02, armor: 0.95, weapons: 1.25 },
     paint: {
       body: 0x2f6fb4, accent: 0x63f4ff, dark: 0x121a24, glass: 0x1b2c36,
@@ -100,7 +102,8 @@ const RAW = [
     name: 'SPECTRE',
     role: 'predator',
     blurb: 'Fast attack build. Hits hard behind a thin shell.',
-    model: null,
+    model: 'assets/models/cars/sandstinger_-_death_race_2000.glb',
+    modelFlip: true,   // this export points its tail down +z
     tune: { speed: 1.02, accel: 1.02, grip: 1, armor: 0.86, weapons: 1.18 },
     paint: {
       body: 0xd9dde0, accent: 0xff8a24, dark: 0x1a1e22, glass: 0x1b2c36,
@@ -112,7 +115,8 @@ const RAW = [
     name: 'JUGGERNAUT',
     role: 'heavy',
     blurb: 'Rolling bunker. Slow to arrive, very hard to stop.',
-    model: null,
+    model: 'assets/models/cars/armored_car_death_race.glb',
+    modelFlip: true,   // this export points its tail down +z
     tune: { speed: 0.93, accel: 0.95, grip: 1.05, armor: 1.3, weapons: 1.05 },
     paint: {
       body: 0xd8b12a, accent: 0xf5f0dc, dark: 0x241f14, glass: 0x1b2c36,
@@ -124,7 +128,7 @@ const RAW = [
     name: 'WARLORD',
     role: 'heavy',
     blurb: 'Armoured hunter. Prices pace for cannon and plate.',
-    model: null,
+    model: 'assets/models/cars/typhoon-vdv_30mm__russian_vdv_warno_mod.glb',
     tune: { speed: 0.95, accel: 0.96, grip: 1.09, armor: 1.22, weapons: 1.15 },
     paint: {
       body: 0x8b5cc0, accent: 0xff8a24, dark: 0x1d1726, glass: 0x1b2c36,

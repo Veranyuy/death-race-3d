@@ -1173,6 +1173,27 @@ window.__DEATHRACE = {
     };
   },
   get rivalDifficulty() { return opponents.diff.id; },
+  /** Which body every car is really drawing — 'box' (no model in the
+      manifest), 'loading', 'ready' or 'failed'. Read this after a reload to
+      see each .glb's fate without digging through the console. */
+  get models() {
+    const def = driver.carDef;
+    return {
+      player: {
+        id: def ? def.id : null,
+        file: def ? def.model : null,
+        state: driver.car.userData.modelState || 'box',
+        tris: driver.car.userData.modelTris || 0,
+        wheels: driver.modelWheels.length,
+      },
+      rivals: opponents.cars.map((car, i) => ({
+        label: car.label,
+        file: car.def ? car.def.model : null,
+        state: opponents.modelState[i],
+        mounted: !!opponents.modelMeshes[i],
+      })),
+    };
+  },
   selectCar(i) { return selectCar(i).name; },
   selectDifficulty(i) { return selectDifficulty(i).id; },
   startFromGarage() { beginRace(); return { phase, armed: gridArmed }; },

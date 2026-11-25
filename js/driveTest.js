@@ -1,5 +1,6 @@
 import * as THREE from './vendor/three.module.js';
 import { PAD_TYPES } from './tracks.js';
+import { loadModel, instantiate } from './modelLoader.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const OVERVIEW_UP = new THREE.Vector3(0, 0, -1);
@@ -257,15 +258,19 @@ function buildCarMesh() {
     muzzles.push(m);
   }
 
+  /* Bodywork is every shell mesh that is not an effect. Listed once here, so a
+     mounted .glb hides the boxes with a single loop and the flames and muzzle
+     flashes — which are not bodywork — keep drawing over it. */
+  const body = [];
   car.traverse((o) => {
-    if (o.isMesh && o.material !== flameMat && o.material !== muzzleMat) {
-      o.castShadow = true;
-      o.receiveShadow = true;
-    }
+    if (!o.isMesh || o.material === flameMat || o.material === muzzleMat) return;
+    o.castShadow = true;
+    o.receiveShadow = true;
+    if (o.parent === shell) body.push(o);
   });
 
   car.userData = {
-    wheels, flames, brakeMat, muzzles, shell,
+    wheels, flames, brakeMat, muzzles, shell, body,
     // kept so the garage can repaint the body without rebuilding the mesh
     mats: { bodyMat, accentMat, darkMat, glassMat, headMat, wheelMat, rimMat, brakeMat },
   };
@@ -362,6 +367,12 @@ export class DriveTest {
       weaponMul: 1,
     };
     this.carDef = null;
+    // the mounted .glb (null while the procedural body stands in) and its
+    // wheel nodes. Bumped per mount so a slow download cannot land on a car
+    // the player has already moved on from.
+    this.model = null;
+    this.modelWheels = [];
+    this._modelToken = 0;
     // garage showcase: the camera orbits the parked car instead of chasing it
     this.garage = false;
     this.garageAngle = 0.9;
@@ -541,6 +552,48 @@ export class DriveTest {
     m.wheelMat.color.setHex(p.wheel);
     m.rimMat.color.setHex(p.rim);
     this.car.name = `player-${def.id}`;
+    this.mountModel(def);
+  }
+
+  /** Swaps the bodywork for the roster entry's .glb, or puts the procedural
+      chassis back when the entry has no model. The box chassis is hidden but
+      never disposed, so a failed download simply leaves it on screen. */
+  mountModel(def) {
+    const token = ++this._modelToken;
+    const { shell, body, wheels } = this.car.userData;
+    const procedural = (on) => {
+      for (const o of body) o.visible = on;
+      for (const w of wheels) w.pivot.visible = on;
+    };
+    if (this.model) shell.remove(this.model);
+    this.model = null;
+    this.modelWheels = [];
+    this.car.userData.modelState = def.model ? 'loading' : 'box';
+    this.car.userData.modelTris = 0;
+
+    if (!def.model) { procedural(true); return; }
+    console.info(`[model] ${def.name}: loading ${def.model}`);
+    loadModel(def.model).then((entry) => {
+      if (token !== this._modelToken) return;
+      const mount = instantiate(entry);
+      if (def.modelFlip) mount.group.rotation.y = Math.PI;
+      shell.add(mount.group);
+      this.model = mount.group;
+      this.modelWheels = mount.wheels;
+      this.car.userData.modelState = 'ready';
+      this.car.userData.modelTris = entry.tris;
+      procedural(false);
+      console.info(`[model] ${def.name}: ${entry.tris.toLocaleString()} tris, ${mount.wheels.length} wheel nodes — box chassis hidden`);
+    }).catch((err) => {
+      if (token !== this._modelToken) return;
+      /* The old body was already taken off the shell above, so the box
+         chassis has to be put back here: without this a car whose model
+         fails after a working one draws as nothing at all. */
+      procedural(true);
+      this.car.userData.modelState = 'failed';
+      console.error(`[model] ${def.name}: FAILED ${def.model} — box chassis in use.`, err);
+      this.messages.push({ text: `${def.name} MODEL FAILED · BOX BODY`, color: '#ff4a32' });
+    });
   }
 
   setTrack(track) {
@@ -832,6 +885,12 @@ export class DriveTest {
     for (const w of car.userData.wheels) {
       w.wheel.rotation.x = this.wheelSpin;
       if (w.front) w.pivot.rotation.y = this.steerAngle;
+    }
+    // a real model's own wheels: front pair steers, all four roll. Models with
+    // baked-in wheels simply have an empty list and rely on the chassis lean
+    for (const w of this.modelWheels) {
+      w.node.rotation.x = w.base.x + this.wheelSpin;
+      if (w.front) w.node.rotation.y = w.base.y + this.steerAngle;
     }
     const flameOn = boosting && vLong > 2;
     for (const f of car.userData.flames) {

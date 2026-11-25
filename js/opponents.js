@@ -1,4 +1,5 @@
 import * as THREE from './vendor/three.module.js';
+import { rivalBatches } from './modelLoader.js';
 
 /* =========================================================================
    DEATH RACE 3D — AI rivals
@@ -14,6 +15,10 @@ import * as THREE from './vendor/three.module.js';
 
    The whole field is four InstancedMeshes (body / cabin / wing / wheels) plus
    one for cannon rounds, so six opponents cost five draw calls.
+
+   A seat whose manifest entry has a `model` is drawn from that .glb instead:
+   its static geometry is merged once and shared as one flat-shaded mesh per
+   car, so six real vehicles still cost only six draw calls and no textures.
    ========================================================================= */
 
 export const RIVAL_COLORS = [0xd2401f, 0x2f6fb4, 0x2f9d55, 0xd8b12a, 0x8b5cc0, 0xd9dde0];
@@ -110,8 +115,15 @@ const WHITE = new THREE.Color(0xffffff);
 
 export class Opponents {
   constructor(scene, driver) {
+    this.scene = scene;
     this.driver = driver;
     this.track = null;
+    // one body per seat — a group of per-material meshes, filled in by
+    // setRoster — rather than a single flat-coloured silhouette
+    this.modelMeshes = new Array(SEATS.length).fill(null);
+    this._modelTokens = new Array(SEATS.length).fill(0);
+    // what each seat is drawing: 'box' | 'loading' | 'ready' | 'failed'
+    this.modelState = new Array(SEATS.length).fill('box');
     this.time = 0;
     this.cornerAhead = null;
     // set by the garage: how hard the field is allowed to race
@@ -233,10 +245,75 @@ export class Opponents {
       car.role = ROLES[def.role] || ROLES.grinder;
       this.body.setColorAt(i, _col.setHex(def.paint.body));
       this.wing.setColorAt(i, _col.setHex(def.paint.accent));
+      this._mountModel(i, def);
     }
     if (this.body.instanceColor) this.body.instanceColor.needsUpdate = true;
     if (this.wing.instanceColor) this.wing.instanceColor.needsUpdate = true;
     this._primeFire();
+  }
+
+  /** The real body for this seat: the model's own paint and markings, one mesh
+      per material, or the instanced boxes if the entry has no model. The token
+      makes a slow download that lands after the player changed car a no-op
+      instead of putting the wrong body on the grid. */
+  _mountModel(index, def) {
+    const token = ++this._modelTokens[index];
+    const prior = this.modelMeshes[index];
+    if (prior) {
+      // geometry and materials belong to the loader's cache, so they outlive
+      // the mount: only the group and its meshes go away here
+      this.scene.remove(prior);
+      this.modelMeshes[index] = null;
+    }
+    this.modelState[index] = 'box';
+    if (!def.model) return;
+    this.modelState[index] = 'loading';
+    console.info(`[rivals] ${def.name}: loading ${def.model}`);
+    rivalBatches(def.model).then((batches) => {
+      if (token !== this._modelTokens[index]) return;
+      // nothing mergeable would otherwise leave the seat reporting 'loading'
+      if (!batches || !batches.length) throw new Error('no mergeable geometry');
+      this.modelState[index] = 'ready';
+      const group = new THREE.Group();
+      for (const { geometry, material } of batches) {
+        const mesh = new THREE.Mesh(geometry, material);
+        // six textured bodies: the shadow pass stays off, as it was for the
+        // flat silhouettes, so the map is never redrawn seven times a frame
+        mesh.castShadow = false;
+        mesh.receiveShadow = true;
+        // six cars across a whole lap: a shared bounding sphere would cull
+        // them all as soon as the first left the frustum
+        mesh.frustumCulled = false;
+        group.add(mesh);
+      }
+      group.userData.flip = def.modelFlip ? Math.PI : 0;
+      this.scene.add(group);
+      this.modelMeshes[index] = group;
+      this._blankInstances(index);
+      console.info(`[rivals] ${def.name}: ${batches.length} material batches — box body hidden`);
+    }).catch((err) => {
+      if (token !== this._modelTokens[index]) return;
+      // the boxes were never blanked for this seat unless a model replaced
+      // them, and update() rewrites them every frame, so they come back on
+      // their own; only the status has to be recorded here
+      this.modelState[index] = 'failed';
+      console.error(`[rivals] ${def.name}: FAILED ${def.model} — box body in use.`, err);
+      this.driver.messages.push({ text: `${def.name} RIVAL MODEL FAILED · BOX BODY`, color: '#ff4a32' });
+    });
+  }
+
+  /** Collapses the instanced boxes for a seat once a model is drawing it. */
+  _blankInstances(index) {
+    this.body.setMatrixAt(index, ZERO);
+    this.cabin.setMatrixAt(index, ZERO);
+    this.wing.setMatrixAt(index, ZERO);
+    for (let k = 0; k < WHEELS.length; k++) {
+      this.wheels.setMatrixAt(index * WHEELS.length + k, ZERO);
+    }
+    this.body.instanceMatrix.needsUpdate = true;
+    this.cabin.instanceMatrix.needsUpdate = true;
+    this.wing.instanceMatrix.needsUpdate = true;
+    this.wheels.instanceMatrix.needsUpdate = true;
   }
 
   /** ROOKIE / PRO / DEATH RACE, applied live: the next corner already uses it. */
@@ -413,17 +490,24 @@ export class Opponents {
       car.z = a.pos.z + (b.pos.z - a.pos.z) * f + rz * car.lane;
       car.yaw = Math.atan2(tx, tz);
 
-      _dummy.position.set(car.x, car.y, car.z);
-      _dummy.rotation.set(0, car.yaw, 0);
-      _dummy.scale.set(1, 1, 1);
-      _dummy.updateMatrix();
-      this.body.setMatrixAt(i, _dummy.matrix);
-      this.cabin.setMatrixAt(i, _dummy.matrix);
-      this.wing.setMatrixAt(i, _dummy.matrix);
+      const model = this.modelMeshes[i];
+      if (model) {
+        model.position.set(car.x, car.y, car.z);
+        model.rotation.y = car.yaw + model.userData.flip;
+      } else {
+        _dummy.position.set(car.x, car.y, car.z);
+        _dummy.rotation.set(0, car.yaw, 0);
+        _dummy.scale.set(1, 1, 1);
+        _dummy.updateMatrix();
+        this.body.setMatrixAt(i, _dummy.matrix);
+        this.cabin.setMatrixAt(i, _dummy.matrix);
+        this.wing.setMatrixAt(i, _dummy.matrix);
+      }
 
       const cy = Math.cos(car.yaw);
       const sy = Math.sin(car.yaw);
       for (const [ox, oz] of WHEELS) {
+        if (model) { wi++; continue; }
         _dummy.position.set(
           car.x + cy * ox + sy * oz,
           car.y + 0.46,
@@ -448,6 +532,15 @@ export class Opponents {
       if (car.flash <= 0) continue;
       car.flash = Math.max(0, car.flash - dt);
       const t = Math.min(1, car.flash * 4.2);
+      const model = this.modelMeshes[i];
+      if (model) {
+        // a textured body has no instance colour, so the hit reads as emissive
+        // on every material it draws with
+        for (const mesh of model.children) {
+          mesh.material.emissive.copy(WHITE).multiplyScalar(t * 0.6);
+        }
+        continue;
+      }
       _col.setHex(car.def ? car.def.paint.body : RIVAL_COLORS[i % RIVAL_COLORS.length]).lerp(WHITE, t);
       this.body.setColorAt(i, _col);
       flashDirty = true;
