@@ -1,7 +1,7 @@
 import * as THREE from './vendor/three.module.js';
 
 /* =========================================================================
-   DEATH RACE 3D — trackside scenery kit
+   APEX ARMED — trackside scenery kit
    A dense, enclosed industrial / prison arena corridor: continuous jersey
    barrier + chain-link security line with light poles, long brick-concrete
    factory facades pressed close to the apron, steel truss colonnades,

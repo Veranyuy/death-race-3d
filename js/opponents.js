@@ -2,7 +2,7 @@ import * as THREE from './vendor/three.module.js';
 import { rivalBatches, mountWeapon } from './modelLoader.js';
 
 /* =========================================================================
-   DEATH RACE 3D — AI rivals
+   APEX ARMED — AI rivals
    Six cars that hold the racing line: they read a precomputed curvature map
    to brake for corners and power out of them, wander between lanes, avoid
    whatever sits directly ahead (rivals *and* the player) and keep their own
@@ -65,7 +65,7 @@ const ROLES = {
 
 /* Difficulty scales the rivals only, on top of their role table, so the
    archetypes keep their character at every setting: a JUGGERNAUT is still the
-   slow armoured one on DEATH RACE, it just hits sooner and hurts more. PRO is
+   slow armoured one on LETHAL, it just hits sooner and hurts more. PRO is
    all 1.0, which is the field the roles were tuned against.
 
    It never touches the player and never reads a car's `tune`: the player's
@@ -74,7 +74,7 @@ const ROLES = {
 export const DIFFICULTIES = [
   { id: 'rookie', name: 'ROOKIE', pace: 0.93, accel: 0.9, aggression: 0.7, aim: -0.1, damage: 0.7, defend: 0.7 },
   { id: 'pro', name: 'PRO', pace: 1, accel: 1, aggression: 1, aim: 0, damage: 1, defend: 1 },
-  { id: 'deathrace', name: 'DEATH RACE', pace: 1.05, accel: 1.08, aggression: 1.4, aim: 0.12, damage: 1.25, defend: 1.2 },
+  { id: 'lethal', name: 'LETHAL', pace: 1.05, accel: 1.08, aggression: 1.4, aim: 0.12, damage: 1.25, defend: 1.2 },
 ];
 export const DEFAULT_DIFFICULTY = 1;
 
@@ -320,7 +320,7 @@ export class Opponents {
     this.wheels.instanceMatrix.needsUpdate = true;
   }
 
-  /** ROOKIE / PRO / DEATH RACE, applied live: the next corner already uses it. */
+  /** ROOKIE / PRO / LETHAL, applied live: the next corner already uses it. */
   setDifficulty(diff) {
     this.diff = diff || DIFFICULTIES[DEFAULT_DIFFICULTY];
     this._primeFire();

@@ -1,5 +1,5 @@
 /* =========================================================================
-   DEATH RACE 3D — procedural audio
+   APEX ARMED — procedural audio
    Everything here is synthesised: no files, no fetches, nothing to cache or
    decode, so the whole soundtrack costs a couple of dozen oscillators. A
    sampled engine loop can be dropped in per slot (see `loadSamples`) and the

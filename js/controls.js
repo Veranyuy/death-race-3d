@@ -1,5 +1,5 @@
 /* =========================================================================
-   DEATH RACE 3D — mobile input layer
+   APEX ARMED — mobile input layer
    Multi-touch steering / boost / brake / weapons, optional tilt steering and
    auto-accelerate. Desktop pointer + keyboard testing is intentionally kept.
    ========================================================================= */

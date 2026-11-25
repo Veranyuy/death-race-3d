@@ -1,5 +1,5 @@
 /* =========================================================================
-   DEATH RACE 3D — vehicle manifest
+   APEX ARMED — vehicle manifest
 
    One entry per machine, and the only place a car is described. The Garage
    reads `name` / `badge` / `blurb` / `stats`, the player car reads `paint` and
@@ -89,7 +89,7 @@ const RAW = [
     role: 'sprinter',
     blurb: 'Stripped street sprinter. Fastest on the straight, thinnest plate.',
     model: 'assets/models/cars/redline.glb',
-    weapon: { model: 'assets/models/weapons/utcm_blaster.glb', length: 1.25, z: -0.25, reach: 0.5 },
+    weapon: { model: 'assets/models/weapons/automatic_machine_gun.glb', length: 1.15, z: -0.25, reach: 0.5 },
     tune: { speed: 1.07, accel: 1.1, grip: 0.98, armor: 0.8, weapons: 0.95 },
     paint: {
       body: 0xd2401f, accent: 0xffb347, dark: 0x241412, glass: 0x1b2c36,

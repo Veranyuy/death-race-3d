@@ -4,7 +4,7 @@ import { DRACOLoader } from './vendor/draco/DRACOLoader.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 
 /* =========================================================================
-   DEATH RACE 3D — vehicle model loader
+   APEX ARMED — vehicle model loader
 
    One downloaded .glb per roster entry. Everything that makes an arbitrary
    Sketchfab export drivable lives here: the file is fetched once, measured,

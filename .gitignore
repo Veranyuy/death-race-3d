@@ -1,0 +1,7 @@
+# Local verification screenshots — captured per review round, never shipped.
+/shots/
+/*.png
+
+# 6.3 MB export, over the 1 MB weapon gate in js/modelLoader.js, so it can
+# never load. Kept locally for a re-export, deliberately not in the repo.
+/assets/models/weapons/utcm_blaster.glb

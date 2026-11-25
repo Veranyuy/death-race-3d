@@ -1,7 +1,7 @@
 import * as THREE from './vendor/three.module.js';
 
 /* =========================================================================
-   DEATH RACE 3D — offensive / defensive weapon state machine
+   APEX ARMED — offensive / defensive weapon state machine
 
    Four weapon systems share one tiny state machine per frame:
 

@@ -2,7 +2,7 @@ import * as THREE from './vendor/three.module.js';
 import { buildScenery, groundHeight, slopeOuterOffset } from './scenery.js';
 
 /* =========================================================================
-   DEATH RACE 3D — Track engine
+   APEX ARMED — Track engine
    Closed CatmullRom circuits -> road mesh, curbs, rails, pads, backdrops.
    ========================================================================= */
 
@@ -532,7 +532,7 @@ function makeTextures(theme, seed) {
     ctx.fillStyle = '#eef4f6';
     ctx.font = '700 122px "Segoe UI", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('DEATH RACE', w / 2, 172);
+    ctx.fillText('APEX ARMED', w / 2, 172);
     ctx.fillStyle = '#ffb066';
     ctx.font = '600 42px ui-monospace, monospace';
     ctx.fillText('S T A R T   / /   F I N I S H', w / 2, 232);

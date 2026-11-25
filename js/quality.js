@@ -1,5 +1,5 @@
 /* =========================================================================
-   DEATH RACE 3D — frame budget governor
+   APEX ARMED — frame budget governor
    Measures the wall-clock cost of each frame and steps the renderer between
    quality levels when the device cannot hold 60 FPS. Pure logic: it never
    touches Three or the DOM, so it can be tested outside the browser.
